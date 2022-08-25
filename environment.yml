@@ -1,0 +1,10 @@
+
+name: wellplate
+dependencies:
+  - python=3.8
+  - numpy=1.23.1
+  - pandas=1.4.3
+  - matplotlib
+  - jupyterlab
+  - conda-forge::ipyfilechooser
+  - pyyaml
