@@ -7,4 +7,10 @@ dependencies:
   - matplotlib
   - jupyterlab
   - conda-forge::ipyfilechooser
+  - xarray
+  # - conda-forge::nd2reader
   - pyyaml
+  - pip
+  - pip: 
+    - napari[all]
+    - nd2
