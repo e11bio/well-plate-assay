@@ -1,0 +1,6 @@
+{
+  "data_sets":[
+    {"name": "test A", "wellmap": "C:/Johan-test.xml", "nd2": "C:/220714_96w-Merged_DAPI-GFP-555-647.nd2"},
+    {"name": "test B", "wellmap": "C:/Johan-test.xml", "nd2": "C:/220714_96w-Merged_DAPI-GFP-555-647.nd2"}
+  ]
+}

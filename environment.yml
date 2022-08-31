@@ -9,6 +9,8 @@ dependencies:
   - conda-forge::ipyfilechooser
   - xarray
   # - conda-forge::nd2reader
+  - panel
+  - pyviz::panel
   - pyyaml
   - pip
   - pip: 
