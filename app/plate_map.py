@@ -14,6 +14,7 @@ from wellplate.elements import read_plate_xml
 import matplotlib.pyplot as plt
 import holoviews as hv
 from holoviews.streams import Pipe, Buffer
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
 def get_app():
     pn.extension('vtk')
@@ -50,8 +51,6 @@ def get_app():
         channel_561_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
         channel_640_enabled = param.Boolean(True,label='Enable Channel 640')
         channel_640_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
-        def view(self):
-            return plot_well_view(well_view)
         def change_selected_well(self, attr, old, new):
             self.selected_well = new[0]
     well_view = WellView()
@@ -72,8 +71,42 @@ def get_app():
     app = pn.template.MaterialTemplate(title='Plate Map')
 
     # dynamic map well images.
+    def create_channel_img(im, color, enable , disp_range):
+        # scale image to 0-1.
+        im = im.astype('float')
+        im = (im - disp_range[0]) / (disp_range[1] - disp_range[0])
+        # create colormap.
+        color = np.array(color)[:,0:3]
+        cmp = LinearSegmentedColormap.from_list('testCmap', color, N=256)
+        rgb_im = cmp(im)
+        return rgb_im[:,:,0:3]
+
     def get_image(frame):
-        return hv.Image(np.random.normal(size=(100, 100))).opts(width=50,height=100)
+        result_im = np.zeros((10,10,3))
+        if (well_view.xarr is not None) & bool(well_view.selected_well):
+            stack = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy())
+            result_im = np.zeros((stack.shape[1],stack.shape[2],3))
+            for channel in range(stack.shape[0]):
+                im = np.squeeze(stack[channel,:,:])
+                name = well_view.channel_names[channel]
+                color = well_view.channel_colors[channel]
+                if (name=='Bright Field') & (well_view.channel_bf_enabled):
+                    result_im += create_channel_img(im, color,
+                    well_view.channel_bf_enabled , well_view.channel_bf_range )
+                if (name == '365 nm') & (well_view.channel_365_enabled):
+                    result_im += create_channel_img(im, color,
+                    well_view.channel_365_enabled , well_view.channel_365_range )
+                if (name == '488 nm') & (well_view.channel_488_enabled):
+                    result_im += create_channel_img(im, color,
+                    well_view.channel_488_enabled , well_view.channel_488_range )
+                if (name == '561 nm') & (well_view.channel_561_enabled):
+                    result_im += create_channel_img(im, color,
+                    well_view.channel_561_enabled , well_view.channel_561_range )
+                if (name == '640 nm') & (well_view.channel_640_enabled):
+                    result_im += create_channel_img(im, color,
+                    well_view.channel_640_enabled , well_view.channel_640_range )
+            result_im = (np.clip(result_im,0,1)*255).astype(np.uint8)
+        return hv.RGB(result_im).opts(width=50,height=100)
 
     @pn.depends(selected_well=well_view.param.selected_well)
     def image_callback(selected_well):
