@@ -2,15 +2,18 @@ import panel as pn
 import param
 import json
 import numpy as np
+import nd2
 from bokeh.models import ColumnDataSource
 from bokeh.plotting import figure
 from bokeh.palettes import Spectral6
 from bokeh.transform import factor_cmap, linear_cmap
 from bokeh.models import ColorBar
+from plate_map_plots import plot_plate_map,plot_well_view
 
 from wellplate.elements import read_plate_xml
 
 def get_app():
+
     class ExperimentData(param.Parameterized):
         with open('app/data.json') as f:
             data_info = json.load(f)
@@ -23,11 +26,33 @@ def get_app():
     class PlateMap(param.Parameterized):
         conditions = param.ObjectSelector(default='',objects=[''],label='Condition')
         def view(self):
-            return plot_plate_map()
+            return plot_plate_map(plate_map,well_view)
     
     plate_map = PlateMap()
 
-    @pn.depends(exp_data.param.current_exp_name, watch=True)
+    class WellView(param.Parameterized):
+        xarr = None
+        selected_well = param.Number(0,label='Enable Brightfield Channel')
+        channel_names = None
+        channel_colors= None
+        # 
+        channel_bf_enabled = param.Boolean(True,label='Enable Brightfield Channel')
+        channel_bf_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
+        channel_365_enabled = param.Boolean(True,label='Enable Channel 365')
+        channel_365_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
+        channel_468_enabled = param.Boolean(True,label='Enable Channel 468')
+        channel_468_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
+        channel_561_enabled = param.Boolean(True,label='Enable Channel 561')
+        channel_561_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
+        channel_640_enabled = param.Boolean(True,label='Enable Channel 640')
+        channel_640_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
+        def view(self):
+            return plot_well_view(well_view)
+        def change_selected_well(self, attr, old, new):
+            self.selected_well = new[0]
+    well_view = WellView()
+
+    @pn.depends(exp_data.param.current_exp_name)
     def load_data(value):
         data_index = exp_data.exp_names.index(exp_data.current_exp_name)
         meta_data, meta_data_info, labels = read_plate_xml(exp_data.data_sets[data_index]['wellmap'])
@@ -35,37 +60,10 @@ def get_app():
         conditions = [ cond for cond in meta_data.columns[1:] if cond not in ['Note','Notes']]
         plate_map.param.conditions.objects = conditions
         plate_map.meta_data=meta_data
-        print(meta_data)
-
-    load_data(None)
-
-    # plots.
-    def plot_plate_map(well_size = 96):
-        p = figure(width=800, height=400, toolbar_location=None)
-        p.grid.visible = False
-        p.toolbar.active_drag = None
-        p.toolbar.active_scroll = None
-        if well_size == 96:
-            x = np.tile(np.arange(1,13),8)
-            y = (np.array([np.repeat(i,12)for i in range(8)])).flatten()
-            #adjust axis.
-            p.x_range.start, p.x_range.end = 0.5,14.5
-            p.y_range.start, p.y_range.end = 7.5,-0.5
-            p.yaxis.ticker = np.arange(0,9)
-            p.yaxis.major_label_overrides = {0: 'A', 1: 'B', 2: 'C',3:'D',4:'E',5:'F',6:'G',7:'H'}
-            p.xaxis.ticker = np.arange(1,13)
-
-        # color.
-        if plate_map.conditions != '':
-            values = plate_map.meta_data[plate_map.conditions].unique()
-            source = ColumnDataSource(dict(x=x,y=y,condition = plate_map.meta_data[plate_map.conditions]))
-            #print(source['conditions'])
-            mapper = linear_cmap(field_name='condition', palette=Spectral6 ,low=min(y) ,high=max(y))
-            p.circle('x','y', source=source, radius=0.3, alpha=0.5,
-                 fill_color=factor_cmap('condition', 'Category10_3', values),legend_field='condition')
-            p.legend.orientation = "vertical"
-            p.legend.location = "top_right"
-        return p
+        # load imaging data.
+        well_view.xarr, well_view.channel_names,  well_view.channel_colors = read_nd2(exp_data.data_sets[data_index]['nd2'])
+        print(well_view.xarr)
+    load_data(exp_data.param.current_exp_name)
 
     # Create app.
     app = pn.template.MaterialTemplate(title='Plate Map')
@@ -73,6 +71,23 @@ def get_app():
     # Main Layout
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     app.main.append(pn.Row(plate_map.param, plate_map.view))
+    app.main.append(pn.Row(well_view.param, well_view.view))
     return app
+
+def read_nd2(file_loc):
+    colormaps = []
+    names = []
+    with nd2.ND2File(file_loc) as f:
+        for channel in f.metadata.channels:
+            name = channel.channel.name
+            r = (channel.channel.colorRGB & 0xff)/255
+            g = ((channel.channel.colorRGB & 0xff00) >> 8)/255
+            b = ((channel.channel.colorRGB & 0xff0000) >> 16)/255
+            a = 1
+            colors = [[0,0,0,0],[r,g,b,a]]
+            colormaps.append(colors)
+            names.append(name)
+        xarr = f.to_xarray(delayed=True)
+    return xarr, names, colormaps
 
 get_app().servable()
