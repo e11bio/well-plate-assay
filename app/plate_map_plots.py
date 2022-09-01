@@ -7,6 +7,7 @@ from bokeh.models import ColorBar, TapTool
 import matplotlib.pyplot as plt
 import panel as pn
 from random import randrange
+import plotly.express as px
 
 # plots.
 def plot_plate_map(plate_map, well_view, well_size = 96):
@@ -39,7 +40,8 @@ def plot_plate_map(plate_map, well_view, well_size = 96):
     return p
 
 def plot_well_view(well_view):
-    fig, ax = plt.subplots(1,1, figsize=(10, 8))
+    p = px.imshow(np.zeros((50,50)))
+    #p = figure(width=800, height=400)
     if (well_view.xarr is not None) & bool(well_view.selected_well):
         stack = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:])
         for channel in range(stack.shape[0]):
@@ -47,15 +49,12 @@ def plot_well_view(well_view):
             name = well_view.channel_names[channel]
             color = well_view.channel_colors[channel]
             if name=='Bright Field':
-                im = create_channel_img(im.to_numpy(), color, well_view.channel_bf_enabled , well_view.channel_bf_range )
-                print(f"{name}; {color}")
-                print(im.min())
-                ax.imshow(im, cmap="hot")
-
-                #p.image(image=im, x=0, y=0, dw=10, dh=10, palette="Spectral11", level="image")
+                im = create_channel_img(im, color, well_view.channel_bf_enabled , well_view.channel_bf_range )
+                #ax.imshow(im, cmap="hot")
+                p = px.imshow(im)
     else:
         im = np.zeros((well_view.xarr.shape[2],well_view.xarr.shape[3]))
-    return fig
+    return p
 
 def create_channel_img(im, color, enable , disp_range):
     return im

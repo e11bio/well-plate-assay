@@ -32,7 +32,7 @@ def get_app():
 
     class WellView(param.Parameterized):
         xarr = None
-        selected_well = param.Number(0,label='Enable Brightfield Channel')
+        selected_well = param.Number(0,label='Enable Brightfield Channel',precedence=-1)
         channel_names = None
         channel_colors= None
         # 
@@ -62,7 +62,6 @@ def get_app():
         plate_map.meta_data=meta_data
         # load imaging data.
         well_view.xarr, well_view.channel_names,  well_view.channel_colors = read_nd2(exp_data.data_sets[data_index]['nd2'])
-        print(well_view.xarr)
     load_data(exp_data.param.current_exp_name)
 
     # Create app.
