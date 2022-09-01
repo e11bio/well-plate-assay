@@ -8,7 +8,7 @@ from bokeh.plotting import figure
 from bokeh.palettes import Spectral6
 from bokeh.transform import factor_cmap, linear_cmap
 from bokeh.models import ColorBar
-from plate_map_plots import plot_plate_map,plot_well_view
+from plate_map_plots import plot_plate_map,plot_well_view, setup_well_view
 
 from wellplate.elements import read_plate_xml
 
@@ -35,6 +35,7 @@ def get_app():
         selected_well = param.Number(0,label='Enable Brightfield Channel',precedence=-1)
         channel_names = None
         channel_colors= None
+        p = setup_well_view()
         # 
         channel_bf_enabled = param.Boolean(True,label='Enable Brightfield Channel')
         channel_bf_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')

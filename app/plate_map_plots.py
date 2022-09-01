@@ -9,6 +9,8 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import panel as pn
 from random import randrange
 import plotly.express as px
+import plotly.graph_objects as go
+import time
 
 # plots.
 def plot_plate_map(plate_map, well_view, well_size = 96):
@@ -40,13 +42,21 @@ def plot_plate_map(plate_map, well_view, well_size = 96):
         source.selected.on_change('indices', well_view.change_selected_well)
     return p
 
+def setup_well_view():
+    img_rgb = np.zeros((10,10,3),dtype=np.uint8)
+    p = px.imshow(img_rgb,aspect='equal')
+    p.update_layout(width=800,height=800,xaxis_visible=False,yaxis_visible=False)
+    return p
+
 def plot_well_view(well_view):
+    
     #p = px.imshow(np.zeros((50,50)))
     #p = figure(width=800, height=400)
-    p, ax = plt.subplots(1, 1, figsize=(6, 6))
+    #p, ax = plt.subplots(1, 1, figsize=(6, 6))
     if (well_view.xarr is not None) & bool(well_view.selected_well):
         stack = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy())
         result_im = np.zeros((stack.shape[1],stack.shape[2],4))
+        start_time = time.time()
         for channel in range(stack.shape[0]):
             im = np.squeeze(stack[channel,:,:])
             name = well_view.channel_names[channel]
@@ -66,11 +76,23 @@ def plot_well_view(well_view):
             if (name == '640 nm') & (well_view.channel_640_enabled):
                 result_im += create_channel_img(im, color,
                  well_view.channel_640_enabled , well_view.channel_640_range )
-        ax.imshow(np.clip(result_im,0,1),vmin=0, vmax=1)
-                #p = px.imshow(im)
+        result_im = (np.clip(result_im,0,1)*255).astype(np.uint8)
+        #print("--- %s seconds ---" % (time.time() - start_time))
+        #p = go.Figure(go.Image(z=result_im,colormodel='rgb',x0=0,y0=0, dx=1,dy=1))
+        #p.image_rgba(image = [(result_im*255).astype('uint32')], x=0,y=0,dw=10,dh=10)
+        #ax.imshow(result_im,vmin=0, vmax=1)
+        #print(well_view.p['data'][0] )
+        #well_view.p['data'][0] = go.Image(z=result_im,colormodel='rgb',x0=0,y0=0, dx=1,dy=1)
+        #well_view.p['data'][0]['z'].update(result_im)
+        #print("--- %s seconds ---" % (time.time() - start_time))
+        well_view.p = px.imshow(result_im)
+
     else:
-        im = np.zeros((well_view.xarr.shape[2],well_view.xarr.shape[3]))
-    return p
+        pass
+        #p = setup_well_view(well_view)
+        #im = np.zeros((well_view.xarr.shape[2],well_view.xarr.shape[3]))
+        #p.image_rgba(image = [im], x=0,y=0,dw=10,dh=10)
+    return well_view.p
 
 def create_channel_img(im, color, enable , disp_range):
     # scale image to 0-1.
