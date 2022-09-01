@@ -5,6 +5,7 @@ from bokeh.palettes import Spectral6
 from bokeh.transform import factor_cmap, linear_cmap
 from bokeh.models import ColorBar, TapTool
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import panel as pn
 from random import randrange
 import plotly.express as px
@@ -40,21 +41,43 @@ def plot_plate_map(plate_map, well_view, well_size = 96):
     return p
 
 def plot_well_view(well_view):
-    p = px.imshow(np.zeros((50,50)))
+    #p = px.imshow(np.zeros((50,50)))
     #p = figure(width=800, height=400)
+    p, ax = plt.subplots(1, 1, figsize=(6, 6))
     if (well_view.xarr is not None) & bool(well_view.selected_well):
-        stack = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:])
+        stack = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy())
+        result_im = np.zeros((stack.shape[1],stack.shape[2],4))
         for channel in range(stack.shape[0]):
             im = np.squeeze(stack[channel,:,:])
             name = well_view.channel_names[channel]
             color = well_view.channel_colors[channel]
-            if name=='Bright Field':
-                im = create_channel_img(im, color, well_view.channel_bf_enabled , well_view.channel_bf_range )
-                #ax.imshow(im, cmap="hot")
-                p = px.imshow(im)
+            if (name=='Bright Field') & (well_view.channel_bf_enabled):
+                result_im += create_channel_img(im, color,
+                 well_view.channel_bf_enabled , well_view.channel_bf_range )
+            if (name == '365 nm') & (well_view.channel_365_enabled):
+                result_im += create_channel_img(im, color,
+                 well_view.channel_365_enabled , well_view.channel_365_range )
+            if (name == '488 nm') & (well_view.channel_488_enabled):
+                result_im += create_channel_img(im, color,
+                 well_view.channel_488_enabled , well_view.channel_488_range )
+            if (name == '561 nm') & (well_view.channel_561_enabled):
+                result_im += create_channel_img(im, color,
+                 well_view.channel_561_enabled , well_view.channel_561_range )
+            if (name == '640 nm') & (well_view.channel_640_enabled):
+                result_im += create_channel_img(im, color,
+                 well_view.channel_640_enabled , well_view.channel_640_range )
+        ax.imshow(np.clip(result_im,0,1),vmin=0, vmax=1)
+                #p = px.imshow(im)
     else:
         im = np.zeros((well_view.xarr.shape[2],well_view.xarr.shape[3]))
     return p
 
 def create_channel_img(im, color, enable , disp_range):
-    return im
+    # scale image to 0-1.
+    im = im.astype('float')
+    im = (im - disp_range[0]) / (disp_range[1] - disp_range[0])
+    # create colormap.
+    color = np.array(color)[:,0:3]
+    cmp = LinearSegmentedColormap.from_list('testCmap', color, N=256)
+    rgb_im = cmp(im)
+    return rgb_im
