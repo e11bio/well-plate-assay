@@ -11,8 +11,12 @@ from bokeh.models import ColorBar
 from plate_map_plots import plot_plate_map,plot_well_view, setup_well_view
 
 from wellplate.elements import read_plate_xml
+import matplotlib.pyplot as plt
+import holoviews as hv
+from holoviews.streams import Pipe, Buffer
 
 def get_app():
+    pn.extension('vtk')
 
     class ExperimentData(param.Parameterized):
         with open('app/data.json') as f:
@@ -35,7 +39,6 @@ def get_app():
         selected_well = param.Number(0,label='Enable Brightfield Channel',precedence=-1)
         channel_names = None
         channel_colors= None
-        p = setup_well_view()
         # 
         channel_bf_enabled = param.Boolean(True,label='Enable Brightfield Channel')
         channel_bf_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
@@ -68,10 +71,20 @@ def get_app():
     # Create app.
     app = pn.template.MaterialTemplate(title='Plate Map')
 
+    # dynamic map well images.
+    def get_image(frame):
+        return hv.Image(np.random.normal(size=(100, 100))).opts(width=50,height=100)
+
+    @pn.depends(selected_well=well_view.param.selected_well)
+    def image_callback(selected_well):
+        return get_image(selected_well).opts(responsive=True)
+    img_dmap = hv.DynamicMap(image_callback)
+
     # Main Layout
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     app.main.append(pn.Row(plate_map.param, plate_map.view))
-    app.main.append(pn.Row(well_view.param, well_view.view))
+    #app.main.append(pn.Row( well_view.view))
+    app.main.append(pn.Row(well_view.param, img_dmap))
     return app
 
 def read_nd2(file_loc):

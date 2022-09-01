@@ -11,6 +11,8 @@ from random import randrange
 import plotly.express as px
 import plotly.graph_objects as go
 import time
+import holoviews as hv
+from holoviews.streams import Pipe, Buffer
 
 # plots.
 def plot_plate_map(plate_map, well_view, well_size = 96):
@@ -43,10 +45,17 @@ def plot_plate_map(plate_map, well_view, well_size = 96):
     return p
 
 def setup_well_view():
+    hv.extension('plotly')
     img_rgb = np.zeros((10,10,3),dtype=np.uint8)
-    p = px.imshow(img_rgb,aspect='equal')
-    p.update_layout(width=800,height=800,xaxis_visible=False,yaxis_visible=False)
-    return p
+    #hv.RGB(img_rgb, bounds=(0, 0, 100, 100))
+    pipe = Pipe(data=[])
+    rgb_dmap = hv.DynamicMap(hv.RGB, streams=[pipe])
+
+    rgb_dmap.opts(framewise=False, axiswise=False)
+    pipe.send(img_rgb)
+    return rgb_dmap, pipe
+
+
 
 def plot_well_view(well_view):
     
@@ -55,7 +64,7 @@ def plot_well_view(well_view):
     #p, ax = plt.subplots(1, 1, figsize=(6, 6))
     if (well_view.xarr is not None) & bool(well_view.selected_well):
         stack = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy())
-        result_im = np.zeros((stack.shape[1],stack.shape[2],4))
+        result_im = np.zeros((stack.shape[1],stack.shape[2],3))
         start_time = time.time()
         for channel in range(stack.shape[0]):
             im = np.squeeze(stack[channel,:,:])
@@ -78,15 +87,7 @@ def plot_well_view(well_view):
                  well_view.channel_640_enabled , well_view.channel_640_range )
         result_im = (np.clip(result_im,0,1)*255).astype(np.uint8)
         #print("--- %s seconds ---" % (time.time() - start_time))
-        #p = go.Figure(go.Image(z=result_im,colormodel='rgb',x0=0,y0=0, dx=1,dy=1))
-        #p.image_rgba(image = [(result_im*255).astype('uint32')], x=0,y=0,dw=10,dh=10)
-        #ax.imshow(result_im,vmin=0, vmax=1)
-        #print(well_view.p['data'][0] )
-        #well_view.p['data'][0] = go.Image(z=result_im,colormodel='rgb',x0=0,y0=0, dx=1,dy=1)
-        #well_view.p['data'][0]['z'].update(result_im)
-        #print("--- %s seconds ---" % (time.time() - start_time))
-        well_view.p = px.imshow(result_im)
-
+        well_view.pipe.send(result_im)
     else:
         pass
         #p = setup_well_view(well_view)
@@ -102,4 +103,4 @@ def create_channel_img(im, color, enable , disp_range):
     color = np.array(color)[:,0:3]
     cmp = LinearSegmentedColormap.from_list('testCmap', color, N=256)
     rgb_im = cmp(im)
-    return rgb_im
+    return rgb_im[:,:,0:3]
