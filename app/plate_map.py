@@ -9,11 +9,10 @@ from plate_map_plots import plot_plate_map
 
 from wellplate.elements import read_plate_xml
 import holoviews as hv
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, to_hex
 import panel.widgets as pnw
 
 def get_app():
-    pn.extension('vtk')
     pn.config.throttled = True
 
     class ExperimentData(param.Parameterized):
@@ -29,7 +28,7 @@ def get_app():
         conditions = param.ObjectSelector(default='',objects=[''],label='Condition')
         def view(self):
             return plot_plate_map(plate_map,well_view)
-    
+
     plate_map = PlateMap()
 
     class WellView(param.Parameterized):
@@ -45,6 +44,12 @@ def get_app():
         def change_selected_well(self, attr, old, new):
             if len(new)>0:
                 self.selected_well = new[0]
+        def create_result_rgb(self):
+            result_im = np.zeros((self.im_size[0],self.im_size[1],3),np.float)
+            for channel in self.channels:
+                if channel.result_rgb is not None:
+                    result_im += channel.result_rgb
+            return hv.RGB(np.clip(result_im,0,1))
     well_view = WellView()
 
     class Channel():
@@ -79,7 +84,7 @@ def get_app():
                 well_view.redraw()
 
     @pn.depends(exp_data.param.current_exp_name)
-    def load_data(value):
+    def load_experiment_data(value):
         data_index = exp_data.exp_names.index(exp_data.current_exp_name)
         meta_data, meta_data_info, labels = read_plate_xml(exp_data.data_sets[data_index]['wellmap'])
         # Get conditions.
@@ -92,14 +97,12 @@ def get_app():
         # create channels.
         for channel, channel_name in enumerate(names):
             well_view.channels.append(Channel(channel_name, colormaps[channel]))
-    load_data(exp_data.param.current_exp_name)
+    load_experiment_data(exp_data.param.current_exp_name)
 
-    # Create app.
-    app = pn.template.MaterialTemplate(title='Plate Map')
     params = well_view.param
 
     @pn.depends(selected_well = well_view.param.selected_well, watch=True)
-    def grab_image(selected_well):
+    def get_well_data(selected_well):
         # Grab data from xarr.
         well_data = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:]).to_numpy().astype('float')
         # attach to channels.
@@ -114,24 +117,19 @@ def get_app():
     ##
     @pn.depends(params.redraw_flag)
     def image_callback(**kwargs):
-        return create_result_rgb().opts(aspect=1)
+        return well_view.create_result_rgb().opts(aspect=1)
     img_dmap = hv.DynamicMap(image_callback)
-
-    # Create array.
-    def create_result_rgb():
-        result_im = np.zeros((well_view.im_size[0],well_view.im_size[1],3),np.float)
-        for channel in well_view.channels:
-            if channel.result_rgb is not None:
-                result_im += channel.result_rgb
-        return hv.RGB(np.clip(result_im,0,1))
-
+    
+    # Create app.
+    app = pn.template.MaterialTemplate(title='Plate Map')
     # Main Layout
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     app.main.append(pn.Row(plate_map.param, plate_map.view))
     channel_widgets_column = pn.Column()
     for channel in well_view.channels:
-        channel_widgets_column.append(channel.enable)
-        channel_widgets_column.append(channel.range)
+        channel_widgets_column.append(
+            pn.Column(channel.enable,channel.range, border=' 5 px black', background= f'{to_hex(channel.colormap(255)[:3])}60'))
+        channel_widgets_column.append(pn.Column(pn.Spacer(height=5)))
     app.main.append(pn.Row(channel_widgets_column,
         img_dmap.opts(frame_width=700, xaxis=None, yaxis=None)))
     return app
