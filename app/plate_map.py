@@ -34,26 +34,14 @@ def get_app():
 
     class WellView(param.Parameterized):
         xarr = None
+        im_size = None
         selected_well = param.Number(0,label='Enable Brightfield Channel',precedence=-1)
-        channel_names = None
-        channel_colormaps= None
         channels = []
-        raw_well = np.zeros((3,3,3))
-        rgb_well = None
         # 
         rgb_result_im = None
-        bf_rgb = None
-        redraw = param.Boolean(False,label='Enable Brightfield Channel', precedence=-1)
-        channel_bf_enabled = param.Boolean(True,label='Enable Brightfield Channel')
-        channel_bf_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
-        channel_365_enabled = param.Boolean(False,label='Enable Channel 365')
-        channel_365_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
-        channel_488_enabled = param.Boolean(False,label='Enable Channel 488')
-        channel_488_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
-        channel_561_enabled = param.Boolean(False,label='Enable Channel 561')
-        channel_561_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
-        channel_640_enabled = param.Boolean(False,label='Enable Channel 640')
-        channel_640_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
+        redraw_flag = param.Boolean(False,label='Enable Brightfield Channel', precedence=-1)
+        def redraw(self):
+            self.redraw_flag = not self.redraw_flag
         def change_selected_well(self, attr, old, new):
             if len(new)>0:
                 self.selected_well = new[0]
@@ -66,9 +54,9 @@ def get_app():
                                 value=(0,20000))
             self.name = name
             self.colormap = colormap
-            im_rgb = None
-            result_rgb = None
-            callback = None
+            self.im_rgb = None
+            self.result_rgb = None
+            self.callback = None
         def set_data(self, array):
             print(f'setting data {self.name}')
             #nmormalize.
@@ -82,15 +70,17 @@ def get_app():
             print(f'recalculating {self.name}')
             if enable:
                 if self.im_rgb is not None:
+                    print(f'recalculating {self.name}: channel enabled.')
                     # scale threshold to 0-1.
                     low_lim = (range[0]/2**16)
                     high_lim = (range[1]/2**16)
                     im = self.im_rgb
                     im = (im - low_lim) / (high_lim - low_lim)
-                    self.rgb_result = im
+                    self.result_rgb = im[:,:,:3]
             else:
                 self.result_rgb = None
             print(f'recalculating {self.name} Done')
+            well_view.redraw()
 
     @pn.depends(exp_data.param.current_exp_name)
     def load_data(value):
@@ -101,10 +91,11 @@ def get_app():
         plate_map.param.conditions.objects = conditions
         plate_map.meta_data=meta_data
         # load imaging data.
-        well_view.xarr, well_view.channel_names,  well_view.channel_colormaps = read_nd2(exp_data.data_sets[data_index]['nd2'])
+        well_view.xarr, names, colormaps = read_nd2(exp_data.data_sets[data_index]['nd2'])
+        well_view.im_size = [well_view.xarr.shape[2],well_view.xarr.shape[3]]
         # create channels.
-        for channel, channel_name in enumerate(well_view.channel_names):
-            well_view.channels.append(Channel(channel_name, well_view.channel_colormaps[channel]))
+        for channel, channel_name in enumerate(names):
+            well_view.channels.append(Channel(channel_name, colormaps[channel]))
     load_data(exp_data.param.current_exp_name)
 
     # Create app.
@@ -113,24 +104,34 @@ def get_app():
 
     @pn.depends(selected_well = well_view.param.selected_well, watch=True)
     def grab_image(selected_well):
-        # apply colormap to full range
+        # Grab data from xarr.
         well_data = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:]).to_numpy().astype('float')
+        # attach to channels.
         for i, channel in enumerate(well_view.channels):
             channel.set_data(np.squeeze(well_data[i,:,:]))
+        # trigger redraw
+        well_view.redraw()
 
     ##
     # Callback on array change.
     ##
-    @pn.depends(params.redraw)
+    @pn.depends(params.redraw_flag)
     def image_callback(**kwargs):
+        print('redrawing')
         return create_result_rgb().opts(aspect=1)
     img_dmap = hv.DynamicMap(image_callback)
 
     # Create array.
     def create_result_rgb():
-        result_im = np.zeros((well_view.raw_well.shape[1],well_view.raw_well.shape[2],3),np.float)
-        if well_view.bf_rgb is not None:
-            result_im+= well_view.bf_rgb
+        print('Making result img')
+        result_im = np.zeros((well_view.im_size[0],well_view.im_size[1],3),np.float)
+        for channel in well_view.channels:
+            if channel.result_rgb is not None:
+                print(f'channel {channel.name} mean {channel.result_rgb.mean()}')
+                print(f'adding {channel.name}')
+                result_im += channel.result_rgb
+        print(f'mean result im: {result_im.mean()}')
+        print('Done')
         return hv.RGB(np.clip(result_im,0,1))
 
     # Main Layout
