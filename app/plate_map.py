@@ -3,6 +3,7 @@ import param
 import json
 import numpy as np
 import nd2
+import time
 
 from plate_map_plots import plot_plate_map
 
@@ -69,11 +70,14 @@ def get_app():
     def create_channel_img(im, colormap, disp_range):
         # scale image to 0-1.
         im = (im - disp_range[0]) / (disp_range[1] - disp_range[0])
+        #start_time = time.time()
         rgb_im = colormap(im)
+        #print("--- %s seconds ---" % (time.time() - start_time))
         return rgb_im[:,:,0:3]
 
     def get_image():
         result_im = np.zeros((well_view.raw_well.shape[1],well_view.raw_well.shape[2],3))
+        
         for channel in range(well_view.raw_well.shape[0]):
             im = np.squeeze(well_view.raw_well[channel,:,:])
             name = well_view.channel_names[channel]
@@ -88,8 +92,11 @@ def get_app():
                 result_im += create_channel_img(im, colormap, well_view.channel_561_range )
             if (name == '640 nm') & (well_view.channel_640_enabled):
                 result_im += create_channel_img(im, colormap, well_view.channel_640_range )
-        result_im = (np.clip(result_im,0,1)*255).astype(np.uint8)
-        return hv.RGB(result_im)
+        result_im = np.clip(result_im,0,1)
+        
+        result_im = hv.RGB(result_im)
+        return result_im
+        
     params = well_view.param
 
     @pn.depends(selected_well = well_view.param.selected_well, watch=True)
