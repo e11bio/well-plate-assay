@@ -49,7 +49,7 @@ def get_app():
 
     class Channel():
         def __init__(self,name,colormap):
-            self.enable = pn.widgets.Checkbox(name=f'Enable {name}')
+            self.enable = pn.widgets.Checkbox(name=f'Enable {name}', value=True)
             self.range = pn.widgets.RangeSlider(name='Display Range', start = 0, end= 2**16,
                                 value=(0,20000))
             self.name = name
@@ -58,19 +58,15 @@ def get_app():
             self.result_rgb = None
             self.callback = None
         def set_data(self, array):
-            print(f'setting data {self.name}')
             #nmormalize.
             norm_im = array/ (2**16)
             # apply colormap.
             self.im_rgb = self.colormap(norm_im)
             # bind controls.
-            self.callback = pn.bind(self.recalc_channel, self.enable, self.range, watch=True)
-            print(f'setting data {self.name} Done')
-        def recalc_channel(self, enable,range ):
-            print(f'recalculating {self.name}')
+            self.callback = pn.bind(self.set_range, self.enable, self.range, watch=True)
+        def set_range(self, enable,range, redraw=True ):
             if enable:
                 if self.im_rgb is not None:
-                    print(f'recalculating {self.name}: channel enabled.')
                     # scale threshold to 0-1.
                     low_lim = (range[0]/2**16)
                     high_lim = (range[1]/2**16)
@@ -79,8 +75,8 @@ def get_app():
                     self.result_rgb = im[:,:,:3]
             else:
                 self.result_rgb = None
-            print(f'recalculating {self.name} Done')
-            well_view.redraw()
+            if redraw:
+                well_view.redraw()
 
     @pn.depends(exp_data.param.current_exp_name)
     def load_data(value):
@@ -109,6 +105,7 @@ def get_app():
         # attach to channels.
         for i, channel in enumerate(well_view.channels):
             channel.set_data(np.squeeze(well_data[i,:,:]))
+            channel.set_range(channel.enable.value, channel.range.value,redraw=False)
         # trigger redraw
         well_view.redraw()
 
@@ -117,28 +114,25 @@ def get_app():
     ##
     @pn.depends(params.redraw_flag)
     def image_callback(**kwargs):
-        print('redrawing')
         return create_result_rgb().opts(aspect=1)
     img_dmap = hv.DynamicMap(image_callback)
 
     # Create array.
     def create_result_rgb():
-        print('Making result img')
         result_im = np.zeros((well_view.im_size[0],well_view.im_size[1],3),np.float)
         for channel in well_view.channels:
             if channel.result_rgb is not None:
-                print(f'channel {channel.name} mean {channel.result_rgb.mean()}')
-                print(f'adding {channel.name}')
                 result_im += channel.result_rgb
-        print(f'mean result im: {result_im.mean()}')
-        print('Done')
         return hv.RGB(np.clip(result_im,0,1))
 
     # Main Layout
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     app.main.append(pn.Row(plate_map.param, plate_map.view))
-    channel_widgets = [[channel.enable, channel.range] for channel  in well_view.channels]
-    app.main.append(pn.Row(pn.Column(channel_widgets[0][0], channel_widgets[0][1]),
+    channel_widgets_column = pn.Column()
+    for channel in well_view.channels:
+        channel_widgets_column.append(channel.enable)
+        channel_widgets_column.append(channel.range)
+    app.main.append(pn.Row(channel_widgets_column,
         img_dmap.opts(frame_width=700, xaxis=None, yaxis=None)))
     return app
 
