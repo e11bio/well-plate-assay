@@ -10,6 +10,7 @@ from plate_map_plots import plot_plate_map
 from wellplate.elements import read_plate_xml
 import holoviews as hv
 from matplotlib.colors import LinearSegmentedColormap
+import panel.widgets as pnw
 
 def get_app():
     pn.extension('vtk')
@@ -39,7 +40,9 @@ def get_app():
         raw_well = np.zeros((3,3,3))
         rgb_well = None
         # 
-        rgb_result_im = param.Array(np.zeros((3,3,3)), precedence=-1)
+        rgb_result_im = None
+        bf_rgb = None
+        redraw = param.Boolean(False,label='Enable Brightfield Channel', precedence=-1)
         channel_bf_enabled = param.Boolean(True,label='Enable Brightfield Channel')
         channel_bf_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
         channel_365_enabled = param.Boolean(False,label='Enable Channel 365')
@@ -51,7 +54,9 @@ def get_app():
         channel_640_enabled = param.Boolean(False,label='Enable Channel 640')
         channel_640_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
         def change_selected_well(self, attr, old, new):
-            self.selected_well = new[0]
+            if len(new)>0:
+                print('here')
+                self.selected_well = new[0]
     well_view = WellView()
 
     @pn.depends(exp_data.param.current_exp_name)
@@ -76,28 +81,6 @@ def get_app():
         high_lim = (disp_range[1]/2**16)
         im = (im - low_lim) / (high_lim - low_lim)
         return im
-
-    def get_image():
-        start_time = time.time()
-        result_im = np.zeros((well_view.raw_well.shape[1],well_view.raw_well.shape[2],3),np.float)
-        if isinstance(well_view.rgb_well,list):
-            for channel in range(well_view.raw_well.shape[0]):
-                im = well_view.rgb_well[channel]
-                name = well_view.channel_names[channel]
-                if (name=='Bright Field') & (well_view.channel_bf_enabled):
-                    result_im += create_channel_img(im, well_view.channel_bf_range )
-                if (name == '365 nm') & (well_view.channel_365_enabled):
-                    result_im += create_channel_img(im, well_view.channel_365_range )
-                if (name == '488 nm') & (well_view.channel_488_enabled):
-                    result_im += create_channel_img(im, well_view.channel_488_range )
-                if (name == '561 nm') & (well_view.channel_561_enabled):
-                    result_im += create_channel_img(im, well_view.channel_561_range )
-                if (name == '640 nm') & (well_view.channel_640_enabled):
-                    result_im += create_channel_img(im, well_view.channel_640_range )
-            result_im = np.clip(result_im,0,1)
-        result_im = hv.RGB(result_im)
-        print("--- %s seconds ---" % (time.time() - start_time))
-        return result_im
         
     params = well_view.param
 
@@ -110,19 +93,67 @@ def get_app():
             # 0-2^16 -> 0-1
             norm_im = well_view.raw_well[channel,:,:] / (2**16)
             well_view.rgb_well.append(cmap(norm_im)[:,:,:3])
+        recalc_channel(name= 'Bright Field', output_name = 'bf_rgb',
+         enabled = well_view.channel_bf_enabled, range = well_view.channel_bf_range)
+        well_view.redraw = not well_view.redraw
 
-    @pn.depends( params.selected_well,params.channel_bf_range,params.channel_bf_enabled,
-        params.channel_365_enabled,params.channel_365_range,params.channel_488_enabled,params.channel_488_range,
-        params.channel_561_enabled,params.channel_561_range,params.channel_640_enabled,params.channel_640_range)
+    ##
+    # Callback on array change.
+    ##
+    @pn.depends(params.redraw)
     def image_callback(**kwargs):
-        return get_image().opts(responsive=True)
+        return create_result_rgb().opts(aspect=1)
     img_dmap = hv.DynamicMap(image_callback)
+
+    # Create array.
+    def create_result_rgb():
+        result_im = np.zeros((well_view.raw_well.shape[1],well_view.raw_well.shape[2],3),np.float)
+        if well_view.bf_rgb is not None:
+            result_im+= well_view.bf_rgb
+        return hv.RGB(np.clip(result_im,0,1))
+
+    ##
+    # CHannel Controls.
+    ##
+    # BF
+    class Channel():
+        
+        def __init__(self,name):
+            self.enable = pn.widgets.Checkbox(name=f'Enable {name}')
+            self.range = pn.widgets.RangeSlider(name='Display Range', start = 0, end= 2**16,
+                                value=(0,20000))
+            self.name = name
+            result_rgb = None
+        def test(self,a):
+            print('test complete')
+        def recalc_channel(self, enable,range ):
+            print('here')
+            if enable & (self.name in well_view.channel_names):
+                channel_ind = well_view.channel_names.index(self.name)
+                if well_view.rgb_well is not None:
+                    self.result_rgb = create_channel_img(well_view.rgb_well[channel_ind], range )
+            else:
+                self.result_rgb = None
+    
+    test = Channel('Bright Field')
+    channel_callback = pn.bind(test.recalc_channel, test.enable, test.range, watch=True)
+
+    @pn.depends(params.channel_bf_enabled, params.channel_bf_range, watch=True)
+    def recalc_bf(enabled, range):
+        if enabled & ('Bright Field' in well_view.channel_names):
+            channel_ind = well_view.channel_names.index('Bright Field')
+            well_view.bf_rgb = create_channel_img(well_view.rgb_well[channel_ind], well_view.channel_bf_range )
+        else:
+            well_view.bf_rgb = None
+        well_view.redraw = not well_view.redraw
+
+
 
     # Main Layout
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     app.main.append(pn.Row(plate_map.param, plate_map.view))
-    app.main.append(pn.Row(well_view.param,
-        img_dmap.opts(width=700,height = 700, xaxis=None, yaxis=None)))
+    app.main.append(pn.Row(pn.Column(test.enable,test.range ),
+        img_dmap.opts(frame_width=700, xaxis=None, yaxis=None)))
     return app
 
 def read_nd2(file_loc):
