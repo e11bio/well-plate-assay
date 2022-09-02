@@ -3,18 +3,12 @@ import param
 import json
 import numpy as np
 import nd2
-from bokeh.models import ColumnDataSource
-from bokeh.plotting import figure
-from bokeh.palettes import Spectral6
-from bokeh.transform import factor_cmap, linear_cmap
-from bokeh.models import ColorBar
-from plate_map_plots import plot_plate_map,plot_well_view, setup_well_view
+
+from plate_map_plots import plot_plate_map
 
 from wellplate.elements import read_plate_xml
-import matplotlib.pyplot as plt
 import holoviews as hv
-from holoviews.streams import Pipe, Buffer
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap
 
 def get_app():
     pn.extension('vtk')
@@ -81,7 +75,7 @@ def get_app():
         rgb_im = cmp(im)
         return rgb_im[:,:,0:3]
 
-    def get_image(frame):
+    def get_image():
         result_im = np.zeros((10,10,3))
         if (well_view.xarr is not None) & bool(well_view.selected_well):
             stack = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy())
@@ -106,18 +100,21 @@ def get_app():
                     result_im += create_channel_img(im, color,
                     well_view.channel_640_enabled , well_view.channel_640_range )
             result_im = (np.clip(result_im,0,1)*255).astype(np.uint8)
-        return hv.RGB(result_im).opts(width=50,height=100)
+        return hv.RGB(result_im)
 
-    @pn.depends(selected_well=well_view.param.selected_well)
-    def image_callback(selected_well):
-        return get_image(selected_well).opts(responsive=True)
+    params = well_view.param
+    @pn.depends(params.selected_well, params.channel_bf_range,params.channel_bf_enabled,
+        params.channel_365_enabled,params.channel_365_range,params.channel_488_enabled,params.channel_488_range,
+        params.channel_561_enabled,params.channel_561_range,params.channel_640_enabled,params.channel_640_range)
+    def image_callback(**kwargs):
+        return get_image().opts(responsive=True)
     img_dmap = hv.DynamicMap(image_callback)
 
     # Main Layout
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     app.main.append(pn.Row(plate_map.param, plate_map.view))
-    #app.main.append(pn.Row( well_view.view))
-    app.main.append(pn.Row(well_view.param, img_dmap))
+    app.main.append(pn.Row(well_view.param,
+    img_dmap.opts(width=700,height = 700, xaxis=None, yaxis=None)))
     return app
 
 def read_nd2(file_loc):
