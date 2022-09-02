@@ -13,6 +13,7 @@ from matplotlib.colors import LinearSegmentedColormap
 
 def get_app():
     pn.extension('vtk')
+    pn.config.throttled = True
 
     class ExperimentData(param.Parameterized):
         with open('app/data.json') as f:
@@ -34,18 +35,20 @@ def get_app():
         xarr = None
         selected_well = param.Number(0,label='Enable Brightfield Channel',precedence=-1)
         channel_names = None
-        channel_colors= None
+        channel_colormaps= None
         raw_well = np.zeros((3,3,3))
+        rgb_well = None
         # 
+        rgb_result_im = param.Array(np.zeros((3,3,3)), precedence=-1)
         channel_bf_enabled = param.Boolean(True,label='Enable Brightfield Channel')
         channel_bf_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
-        channel_365_enabled = param.Boolean(True,label='Enable Channel 365')
+        channel_365_enabled = param.Boolean(False,label='Enable Channel 365')
         channel_365_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
-        channel_488_enabled = param.Boolean(True,label='Enable Channel 488')
+        channel_488_enabled = param.Boolean(False,label='Enable Channel 488')
         channel_488_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
-        channel_561_enabled = param.Boolean(True,label='Enable Channel 561')
+        channel_561_enabled = param.Boolean(False,label='Enable Channel 561')
         channel_561_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
-        channel_640_enabled = param.Boolean(True,label='Enable Channel 640')
+        channel_640_enabled = param.Boolean(False,label='Enable Channel 640')
         channel_640_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
         def change_selected_well(self, attr, old, new):
             self.selected_well = new[0]
@@ -60,48 +63,53 @@ def get_app():
         plate_map.param.conditions.objects = conditions
         plate_map.meta_data=meta_data
         # load imaging data.
-        well_view.xarr, well_view.channel_names,  well_view.channel_colors = read_nd2(exp_data.data_sets[data_index]['nd2'])
+        well_view.xarr, well_view.channel_names,  well_view.channel_colormaps = read_nd2(exp_data.data_sets[data_index]['nd2'])
     load_data(exp_data.param.current_exp_name)
 
     # Create app.
     app = pn.template.MaterialTemplate(title='Plate Map')
 
     # dynamic map well images.
-    def create_channel_img(im, colormap, disp_range):
-        # scale image to 0-1.
-        im = (im - disp_range[0]) / (disp_range[1] - disp_range[0])
-        #start_time = time.time()
-        rgb_im = colormap(im)
-        #print("--- %s seconds ---" % (time.time() - start_time))
-        return rgb_im[:,:,0:3]
+    def create_channel_img(im,disp_range):
+        # scale threshold to 0-1.
+        low_lim = (disp_range[0]/2**16)
+        high_lim = (disp_range[1]/2**16)
+        im = (im - low_lim) / (high_lim - low_lim)
+        return im
 
     def get_image():
-        result_im = np.zeros((well_view.raw_well.shape[1],well_view.raw_well.shape[2],3))
-        
-        for channel in range(well_view.raw_well.shape[0]):
-            im = np.squeeze(well_view.raw_well[channel,:,:])
-            name = well_view.channel_names[channel]
-            colormap = well_view.channel_colors[channel]
-            if (name=='Bright Field') & (well_view.channel_bf_enabled):
-                result_im += create_channel_img(im, colormap, well_view.channel_bf_range )
-            if (name == '365 nm') & (well_view.channel_365_enabled):
-                result_im += create_channel_img(im, colormap, well_view.channel_365_range )
-            if (name == '488 nm') & (well_view.channel_488_enabled):
-                result_im += create_channel_img(im, colormap, well_view.channel_488_range )
-            if (name == '561 nm') & (well_view.channel_561_enabled):
-                result_im += create_channel_img(im, colormap, well_view.channel_561_range )
-            if (name == '640 nm') & (well_view.channel_640_enabled):
-                result_im += create_channel_img(im, colormap, well_view.channel_640_range )
-        result_im = np.clip(result_im,0,1)
-        
+        start_time = time.time()
+        result_im = np.zeros((well_view.raw_well.shape[1],well_view.raw_well.shape[2],3),np.float)
+        if isinstance(well_view.rgb_well,list):
+            for channel in range(well_view.raw_well.shape[0]):
+                im = well_view.rgb_well[channel]
+                name = well_view.channel_names[channel]
+                if (name=='Bright Field') & (well_view.channel_bf_enabled):
+                    result_im += create_channel_img(im, well_view.channel_bf_range )
+                if (name == '365 nm') & (well_view.channel_365_enabled):
+                    result_im += create_channel_img(im, well_view.channel_365_range )
+                if (name == '488 nm') & (well_view.channel_488_enabled):
+                    result_im += create_channel_img(im, well_view.channel_488_range )
+                if (name == '561 nm') & (well_view.channel_561_enabled):
+                    result_im += create_channel_img(im, well_view.channel_561_range )
+                if (name == '640 nm') & (well_view.channel_640_enabled):
+                    result_im += create_channel_img(im, well_view.channel_640_range )
+            result_im = np.clip(result_im,0,1)
         result_im = hv.RGB(result_im)
+        print("--- %s seconds ---" % (time.time() - start_time))
         return result_im
         
     params = well_view.param
 
     @pn.depends(selected_well = well_view.param.selected_well, watch=True)
     def grab_image(selected_well):
-        well_view.raw_well = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy().astype('float'))
+        # apply colormap to full range
+        well_view.raw_well = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:]).to_numpy().astype('float')
+        well_view.rgb_well = []
+        for channel, cmap in enumerate(well_view.channel_colormaps):
+            # 0-2^16 -> 0-1
+            norm_im = well_view.raw_well[channel,:,:] / (2**16)
+            well_view.rgb_well.append(cmap(norm_im)[:,:,:3])
 
     @pn.depends( params.selected_well,params.channel_bf_range,params.channel_bf_enabled,
         params.channel_365_enabled,params.channel_365_range,params.channel_488_enabled,params.channel_488_range,
