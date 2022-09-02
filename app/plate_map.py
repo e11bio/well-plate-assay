@@ -37,6 +37,7 @@ def get_app():
         selected_well = param.Number(0,label='Enable Brightfield Channel',precedence=-1)
         channel_names = None
         channel_colormaps= None
+        channels = []
         raw_well = np.zeros((3,3,3))
         rgb_well = None
         # 
@@ -55,9 +56,34 @@ def get_app():
         channel_640_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
         def change_selected_well(self, attr, old, new):
             if len(new)>0:
-                print('here')
                 self.selected_well = new[0]
     well_view = WellView()
+
+    class Channel():
+        def __init__(self,name,colormap):
+            self.enable = pn.widgets.Checkbox(name=f'Enable {name}')
+            self.range = pn.widgets.RangeSlider(name='Display Range', start = 0, end= 2**16,
+                                value=(0,20000))
+            self.name = name
+            self.colormap = colormap
+            im_rgb = None
+            result_rgb = None
+        def set_data(self, array):
+            #nmormalize.
+            norm_im = array/ (2**16)
+            # apply colormap.
+            self.im_rgb = self.colormap(norm_im)
+        def recalc_channel(self, enable,range ):
+            if enable:
+                if self.im_rgb is not None:
+                    # scale threshold to 0-1.
+                    low_lim = (range[0]/2**16)
+                    high_lim = (range[1]/2**16)
+                    im = self.im_rgb
+                    im = (im - low_lim) / (high_lim - low_lim)
+                    self.rgb_result = im
+            else:
+                self.result_rgb = None
 
     @pn.depends(exp_data.param.current_exp_name)
     def load_data(value):
@@ -69,33 +95,22 @@ def get_app():
         plate_map.meta_data=meta_data
         # load imaging data.
         well_view.xarr, well_view.channel_names,  well_view.channel_colormaps = read_nd2(exp_data.data_sets[data_index]['nd2'])
+        # create channels.
+        for channel, channel_name in enumerate(well_view.channel_names):
+            well_view.channels.append(Channel(channel_name, well_view.channel_colormaps[channel]))
     load_data(exp_data.param.current_exp_name)
 
     # Create app.
     app = pn.template.MaterialTemplate(title='Plate Map')
-
-    # dynamic map well images.
-    def create_channel_img(im,disp_range):
-        # scale threshold to 0-1.
-        low_lim = (disp_range[0]/2**16)
-        high_lim = (disp_range[1]/2**16)
-        im = (im - low_lim) / (high_lim - low_lim)
-        return im
         
     params = well_view.param
 
     @pn.depends(selected_well = well_view.param.selected_well, watch=True)
     def grab_image(selected_well):
         # apply colormap to full range
-        well_view.raw_well = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:]).to_numpy().astype('float')
-        well_view.rgb_well = []
-        for channel, cmap in enumerate(well_view.channel_colormaps):
-            # 0-2^16 -> 0-1
-            norm_im = well_view.raw_well[channel,:,:] / (2**16)
-            well_view.rgb_well.append(cmap(norm_im)[:,:,:3])
-        recalc_channel(name= 'Bright Field', output_name = 'bf_rgb',
-         enabled = well_view.channel_bf_enabled, range = well_view.channel_bf_range)
-        well_view.redraw = not well_view.redraw
+        well_data = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:]).to_numpy().astype('float')
+        for i, channel in enumerate(well_view.channels):
+            channel.set_data(np.squeeze(well_data[i,:,:]))
 
     ##
     # Callback on array change.
@@ -116,27 +131,6 @@ def get_app():
     # CHannel Controls.
     ##
     # BF
-    class Channel():
-        
-        def __init__(self,name):
-            self.enable = pn.widgets.Checkbox(name=f'Enable {name}')
-            self.range = pn.widgets.RangeSlider(name='Display Range', start = 0, end= 2**16,
-                                value=(0,20000))
-            self.name = name
-            result_rgb = None
-        def test(self,a):
-            print('test complete')
-        def recalc_channel(self, enable,range ):
-            print('here')
-            if enable & (self.name in well_view.channel_names):
-                channel_ind = well_view.channel_names.index(self.name)
-                if well_view.rgb_well is not None:
-                    self.result_rgb = create_channel_img(well_view.rgb_well[channel_ind], range )
-            else:
-                self.result_rgb = None
-    
-    test = Channel('Bright Field')
-    channel_callback = pn.bind(test.recalc_channel, test.enable, test.range, watch=True)
 
     @pn.depends(params.channel_bf_enabled, params.channel_bf_range, watch=True)
     def recalc_bf(enabled, range):
@@ -152,7 +146,8 @@ def get_app():
     # Main Layout
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     app.main.append(pn.Row(plate_map.param, plate_map.view))
-    app.main.append(pn.Row(pn.Column(test.enable,test.range ),
+    channel_widgets = [[channel.enable, channel.range] for channel  in well_view.channels]
+    app.main.append(pn.Row(pn.Column(channel_widgets[0][0], channel_widgets[0][1]),
         img_dmap.opts(frame_width=700, xaxis=None, yaxis=None)))
     return app
 
