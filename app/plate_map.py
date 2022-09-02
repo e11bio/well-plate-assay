@@ -66,17 +66,10 @@ def get_app():
     app = pn.template.MaterialTemplate(title='Plate Map')
 
     # dynamic map well images.
-    def create_channel_img(im, color, enable , disp_range):
+    def create_channel_img(im, colormap, disp_range):
         # scale image to 0-1.
-        im = im.astype('float')
         im = (im - disp_range[0]) / (disp_range[1] - disp_range[0])
-        ### !!!
-        ## Note change this so its doesnt remake the colormap each step.
-        # create colormap.
-        # !!!!
-        color = np.array(color)[:,0:3]
-        cmp = LinearSegmentedColormap.from_list('testCmap', color, N=256)
-        rgb_im = cmp(im)
+        rgb_im = colormap(im)
         return rgb_im[:,:,0:3]
 
     def get_image():
@@ -84,29 +77,24 @@ def get_app():
         for channel in range(well_view.raw_well.shape[0]):
             im = np.squeeze(well_view.raw_well[channel,:,:])
             name = well_view.channel_names[channel]
-            color = well_view.channel_colors[channel]
+            colormap = well_view.channel_colors[channel]
             if (name=='Bright Field') & (well_view.channel_bf_enabled):
-                result_im += create_channel_img(im, color,
-                well_view.channel_bf_enabled , well_view.channel_bf_range )
+                result_im += create_channel_img(im, colormap, well_view.channel_bf_range )
             if (name == '365 nm') & (well_view.channel_365_enabled):
-                result_im += create_channel_img(im, color,
-                well_view.channel_365_enabled , well_view.channel_365_range )
+                result_im += create_channel_img(im, colormap, well_view.channel_365_range )
             if (name == '488 nm') & (well_view.channel_488_enabled):
-                result_im += create_channel_img(im, color,
-                well_view.channel_488_enabled , well_view.channel_488_range )
+                result_im += create_channel_img(im, colormap, well_view.channel_488_range )
             if (name == '561 nm') & (well_view.channel_561_enabled):
-                result_im += create_channel_img(im, color,
-                well_view.channel_561_enabled , well_view.channel_561_range )
+                result_im += create_channel_img(im, colormap, well_view.channel_561_range )
             if (name == '640 nm') & (well_view.channel_640_enabled):
-                result_im += create_channel_img(im, color,
-                well_view.channel_640_enabled , well_view.channel_640_range )
+                result_im += create_channel_img(im, colormap, well_view.channel_640_range )
         result_im = (np.clip(result_im,0,1)*255).astype(np.uint8)
         return hv.RGB(result_im)
     params = well_view.param
 
     @pn.depends(selected_well = well_view.param.selected_well, watch=True)
     def grab_image(selected_well):
-        well_view.raw_well = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy())
+        well_view.raw_well = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy().astype('float'))
 
     @pn.depends( params.selected_well,params.channel_bf_range,params.channel_bf_enabled,
         params.channel_365_enabled,params.channel_365_range,params.channel_488_enabled,params.channel_488_range,
@@ -132,8 +120,9 @@ def read_nd2(file_loc):
             g = ((channel.channel.colorRGB & 0xff00) >> 8)/255
             b = ((channel.channel.colorRGB & 0xff0000) >> 16)/255
             a = 1
-            colors = [[0,0,0,0],[r,g,b,a]]
-            colormaps.append(colors)
+            colors = [[0,0,0],[r,g,b]]
+            # process colormaps. 
+            colormaps.append(LinearSegmentedColormap.from_list('testCmap', colors, N=256))
             names.append(name)
         xarr = f.to_xarray(delayed=True)
     return xarr, names, colormaps
