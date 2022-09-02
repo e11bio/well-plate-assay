@@ -34,6 +34,7 @@ def get_app():
         selected_well = param.Number(0,label='Enable Brightfield Channel',precedence=-1)
         channel_names = None
         channel_colors= None
+        raw_well = None
         # 
         channel_bf_enabled = param.Boolean(True,label='Enable Brightfield Channel')
         channel_bf_range = param.Range(default=(200, 20000), bounds=(0, 65536),label='Display Range')
@@ -78,10 +79,9 @@ def get_app():
     def get_image():
         result_im = np.zeros((10,10,3))
         if (well_view.xarr is not None) & bool(well_view.selected_well):
-            stack = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy())
-            result_im = np.zeros((stack.shape[1],stack.shape[2],3))
-            for channel in range(stack.shape[0]):
-                im = np.squeeze(stack[channel,:,:])
+            result_im = np.zeros((well_view.raw_well.shape[1],well_view.raw_well.shape[2],3))
+            for channel in range(well_view.raw_well.shape[0]):
+                im = np.squeeze(well_view.raw_well[channel,:,:])
                 name = well_view.channel_names[channel]
                 color = well_view.channel_colors[channel]
                 if (name=='Bright Field') & (well_view.channel_bf_enabled):
@@ -101,9 +101,14 @@ def get_app():
                     well_view.channel_640_enabled , well_view.channel_640_range )
             result_im = (np.clip(result_im,0,1)*255).astype(np.uint8)
         return hv.RGB(result_im)
-
     params = well_view.param
-    @pn.depends(params.selected_well, params.channel_bf_range,params.channel_bf_enabled,
+
+    @pn.depends(selected_well = well_view.param.selected_well, watch=True)
+    def grab_image(selected_well):
+        print('here')
+        well_view.raw_well = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:].to_numpy())
+        
+    @pn.depends( params.selected_well,params.channel_bf_range,params.channel_bf_enabled,
         params.channel_365_enabled,params.channel_365_range,params.channel_488_enabled,params.channel_488_range,
         params.channel_561_enabled,params.channel_561_range,params.channel_640_enabled,params.channel_640_range)
     def image_callback(**kwargs):
@@ -114,7 +119,7 @@ def get_app():
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     app.main.append(pn.Row(plate_map.param, plate_map.view))
     app.main.append(pn.Row(well_view.param,
-    img_dmap.opts(width=700,height = 700, xaxis=None, yaxis=None)))
+        img_dmap.opts(width=700,height = 700, xaxis=None, yaxis=None)))
     return app
 
 def read_nd2(file_loc):
