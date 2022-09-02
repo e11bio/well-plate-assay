@@ -68,12 +68,18 @@ def get_app():
             self.colormap = colormap
             im_rgb = None
             result_rgb = None
+            callback = None
         def set_data(self, array):
+            print(f'setting data {self.name}')
             #nmormalize.
             norm_im = array/ (2**16)
             # apply colormap.
             self.im_rgb = self.colormap(norm_im)
+            # bind controls.
+            self.callback = pn.bind(self.recalc_channel, self.enable, self.range, watch=True)
+            print(f'setting data {self.name} Done')
         def recalc_channel(self, enable,range ):
+            print(f'recalculating {self.name}')
             if enable:
                 if self.im_rgb is not None:
                     # scale threshold to 0-1.
@@ -84,6 +90,7 @@ def get_app():
                     self.rgb_result = im
             else:
                 self.result_rgb = None
+            print(f'recalculating {self.name} Done')
 
     @pn.depends(exp_data.param.current_exp_name)
     def load_data(value):
@@ -102,7 +109,6 @@ def get_app():
 
     # Create app.
     app = pn.template.MaterialTemplate(title='Plate Map')
-        
     params = well_view.param
 
     @pn.depends(selected_well = well_view.param.selected_well, watch=True)
@@ -126,22 +132,6 @@ def get_app():
         if well_view.bf_rgb is not None:
             result_im+= well_view.bf_rgb
         return hv.RGB(np.clip(result_im,0,1))
-
-    ##
-    # CHannel Controls.
-    ##
-    # BF
-
-    @pn.depends(params.channel_bf_enabled, params.channel_bf_range, watch=True)
-    def recalc_bf(enabled, range):
-        if enabled & ('Bright Field' in well_view.channel_names):
-            channel_ind = well_view.channel_names.index('Bright Field')
-            well_view.bf_rgb = create_channel_img(well_view.rgb_well[channel_ind], well_view.channel_bf_range )
-        else:
-            well_view.bf_rgb = None
-        well_view.redraw = not well_view.redraw
-
-
 
     # Main Layout
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
