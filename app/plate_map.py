@@ -122,7 +122,6 @@ def get_app():
     img_dmap = hv.DynamicMap(image_callback)
 
     def well_info_update(selected_well):
-        pn.extension('bokek')
         return hv.Table(pd.DataFrame([plate_map.meta_data.iloc[selected_well]])).opts(
             height=250,width=500,padding=0.1)
     well_info_table = pn.bind(well_info_update, well_view.param.selected_well)
@@ -133,10 +132,12 @@ def get_app():
     # Header.
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     # Plate map.
+    app.main.append(pn.pane.Markdown('#Plate Map\n View experimental conditions and select wells'))
     app.main.append(pn.Column(
         plate_map.param, pn.Row(plate_map.view,well_info_table)))
 
     # Image widgets.
+    app.main.append(pn.pane.Markdown('#Well Viewer'))
     channel_widgets_column = pn.Column()
     for channel in well_view.channels:
         channel_widgets_column.append(
