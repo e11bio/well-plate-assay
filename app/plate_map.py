@@ -4,6 +4,7 @@ import json
 import numpy as np
 import nd2
 import time
+import pandas as pd
 
 from plate_map_plots import plot_plate_map
 
@@ -13,6 +14,7 @@ from matplotlib.colors import LinearSegmentedColormap, to_hex
 import panel.widgets as pnw
 
 def get_app():
+    hv.extension('plotly')
     pn.config.throttled = True
 
     class ExperimentData(param.Parameterized):
@@ -26,6 +28,7 @@ def get_app():
 
     class PlateMap(param.Parameterized):
         conditions = param.ObjectSelector(default='',objects=[''],label='Condition')
+        meta_data=pd.DataFrame()
         def view(self):
             return plot_plate_map(plate_map,well_view)
 
@@ -51,6 +54,7 @@ def get_app():
                     result_im += channel.result_rgb
             return hv.RGB(np.clip(result_im,0,1))
     well_view = WellView()
+
 
     class Channel():
         def __init__(self,name,colormap):
@@ -86,11 +90,10 @@ def get_app():
     @pn.depends(exp_data.param.current_exp_name)
     def load_experiment_data(value):
         data_index = exp_data.exp_names.index(exp_data.current_exp_name)
-        meta_data, meta_data_info, labels = read_plate_xml(exp_data.data_sets[data_index]['wellmap'])
+        plate_map.meta_data, _, labels = read_plate_xml(exp_data.data_sets[data_index]['wellmap'])
         # Get conditions.
-        conditions = [ cond for cond in meta_data.columns[1:] if cond not in ['Note','Notes']]
+        conditions = [ cond for cond in plate_map.meta_data.columns[1:] if cond not in ['Note','Notes']]
         plate_map.param.conditions.objects = conditions
-        plate_map.meta_data=meta_data
         # load imaging data.
         well_view.xarr, names, colormaps = read_nd2(exp_data.data_sets[data_index]['nd2'])
         well_view.im_size = [well_view.xarr.shape[2],well_view.xarr.shape[3]]
@@ -112,26 +115,35 @@ def get_app():
         # trigger redraw
         well_view.redraw()
 
-    ##
-    # Callback on array change.
-    ##
+    # Redraw image.
     @pn.depends(params.redraw_flag)
     def image_callback(**kwargs):
         return well_view.create_result_rgb().opts(aspect=1)
     img_dmap = hv.DynamicMap(image_callback)
-    
+
+    def well_info_update(selected_well):
+        pn.extension('bokek')
+        return hv.Table(pd.DataFrame([plate_map.meta_data.iloc[selected_well]])).opts(
+            height=250,width=500,padding=0.1)
+    well_info_table = pn.bind(well_info_update, well_view.param.selected_well)
+
     # Create app.
     app = pn.template.MaterialTemplate(title='Plate Map')
     # Main Layout
+    # Header.
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
-    app.main.append(pn.Row(plate_map.param, plate_map.view))
+    # Plate map.
+    app.main.append(pn.Column(
+        plate_map.param, pn.Row(plate_map.view,well_info_table)))
+
+    # Image widgets.
     channel_widgets_column = pn.Column()
     for channel in well_view.channels:
         channel_widgets_column.append(
-            pn.Column(channel.enable,channel.range, border=' 5 px black', background= f'{to_hex(channel.colormap(255)[:3])}60'))
+            pn.Column(channel.enable,channel.range, background= f'{to_hex(channel.colormap(255)[:3])}60'))
         channel_widgets_column.append(pn.Column(pn.Spacer(height=5)))
     app.main.append(pn.Row(channel_widgets_column,
-        img_dmap.opts(frame_width=700, xaxis=None, yaxis=None)))
+        img_dmap.opts(width=700,height=700, xaxis=None, yaxis=None)))
     return app
 
 def read_nd2(file_loc):
