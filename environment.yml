@@ -8,7 +8,7 @@ dependencies:
   - jupyterlab
   - conda-forge::ipyfilechooser
   - xarray
-  # - conda-forge::nd2reader
+  - conda-forge::zarr
   - panel
   - pyviz::panel
   - pyyaml

@@ -1,6 +1,8 @@
 import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
+import nd2
+from matplotlib.colors import LinearSegmentedColormap
 
 def read_plate_xml(file_loc):
     # get tree
@@ -51,3 +53,20 @@ def well_ind_to_id(ind):
     letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
     well_id = f"{letters[row_col[0]]}{row_col[1]+1}"
     return well_id
+
+def read_nd2(file_loc):
+    colormaps = []
+    names = []
+    with nd2.ND2File(file_loc) as f:
+        for channel in f.metadata.channels:
+            name = channel.channel.name
+            r = (channel.channel.colorRGB & 0xff)/255
+            g = ((channel.channel.colorRGB & 0xff00) >> 8)/255
+            b = ((channel.channel.colorRGB & 0xff0000) >> 16)/255
+            a = 1
+            colors = [[0,0,0],[r,g,b]]
+            # process colormaps. 
+            colormaps.append(LinearSegmentedColormap.from_list('testCmap', colors, N=256))
+            names.append(name)
+        xarr = f.to_xarray(delayed=True)
+    return xarr, names, colormaps

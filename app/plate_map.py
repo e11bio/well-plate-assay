@@ -2,14 +2,13 @@ import panel as pn
 import param
 import json
 import numpy as np
-import nd2
 import pandas as pd
 
 from plate_map_plots import plot_plate_map, WellInfoTable
 
-from wellplate.elements import read_plate_xml
+from wellplate.elements import read_plate_xml, read_nd2
 import holoviews as hv
-from matplotlib.colors import LinearSegmentedColormap, to_hex
+from matplotlib.colors import  to_hex
 
 def get_app():
     hv.extension('plotly')
@@ -31,7 +30,6 @@ def get_app():
         conditions = param.ObjectSelector(default='',objects=[''],label='Condition')
         meta_data=pd.DataFrame()
         def view(self):
-            print('here!')
             return plot_plate_map(plate_map,well_view)
 
     plate_map = PlateMap(name='')
@@ -98,10 +96,6 @@ def get_app():
             if redraw:
                 well_view.redraw()
 
-
-
-    params = well_view.param
-
     @pn.depends(selected_well = well_view.param.selected_well, watch=True)
     def get_well_data(selected_well):
         # Grab data from xarr.
@@ -114,7 +108,7 @@ def get_app():
         well_view.redraw()
 
     # Redraw image.
-    @pn.depends(params.redraw_flag)
+    @pn.depends(well_view.param.redraw_flag)
     def image_callback(**kwargs):
         return well_view.create_result_rgb()
     img_dmap = hv.DynamicMap(image_callback)
@@ -125,14 +119,14 @@ def get_app():
     # Header.
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     # Plate map.
-    app.main.append(pn.Column(pn.pane.HTML("<h1>Plate Map</h1>"),plate_map.param,))
+    app.main.append(pn.Column(plate_map.param,))
     app.main.append(pn.Row(pn.layout.HSpacer(),plate_map.view,pn.layout.HSpacer()))
 
     # Image widgets.
     app.main.append(pn.Column(well_info_table.param,well_info_table.view))
     channel_widgets_column = pn.Column()
     app.main.append(pn.Row(pn.layout.HSpacer(),channel_widgets_column,
-        img_dmap.opts(width=600, height=600),pn.layout.HSpacer()))
+        img_dmap.opts(width=700, height=700),pn.layout.HSpacer()))
 
     @pn.depends(exp_data.param.current_exp_name, watch=True)
     def load_experiment_data(value):
@@ -159,21 +153,6 @@ def get_app():
     load_experiment_data(exp_data.param.current_exp_name)
     return app
 
-def read_nd2(file_loc):
-    colormaps = []
-    names = []
-    with nd2.ND2File(file_loc) as f:
-        for channel in f.metadata.channels:
-            name = channel.channel.name
-            r = (channel.channel.colorRGB & 0xff)/255
-            g = ((channel.channel.colorRGB & 0xff00) >> 8)/255
-            b = ((channel.channel.colorRGB & 0xff0000) >> 16)/255
-            a = 1
-            colors = [[0,0,0],[r,g,b]]
-            # process colormaps. 
-            colormaps.append(LinearSegmentedColormap.from_list('testCmap', colors, N=256))
-            names.append(name)
-        xarr = f.to_xarray(delayed=True)
-    return xarr, names, colormaps
+
 
 get_app().servable()

@@ -1,6 +1,6 @@
 {
   "data_sets":[
-    {"name": "test A", "wellmap": "C:/Johan-test.xml", "nd2": "C:/220714_96w-Merged_DAPI-GFP-555-647.nd2"},
-    {"name": "test B", "wellmap": "C:/Johan-test.xml", "nd2": "C:/220714_96w-Merged_DAPI-GFP-555-647.nd2"}
+    {"name": "test A", "wellmap": "C:/example_data/Johan-test.xml", "nd2": "C:/example_data/220714_96w-Merged_DAPI-GFP-555-647.nd2","processed":"C:/example_data/processed.zarr"},
+    {"name": "test B", "wellmap": "C:/example_data/Johan-test.xml", "nd2": "C:/example_data/220714_96w-Merged_DAPI-GFP-555-647.nd2","processed":"C:/example_data/processed.zarr"}
   ]
 }
