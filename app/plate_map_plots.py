@@ -38,10 +38,10 @@ def plot_plate_map(plate_map, well_view, well_size = 96):
         source.selected.on_change('indices', well_view.change_selected_well)
     return p
 
-class WellInfoText(param.Parameterized):
+class WellInfoTable(param.Parameterized):
+    #hidden.
     well_info = param.DataFrame(pd.DataFrame([{'Well':'', 'Condition':''}]),precedence=-1)
     def view(self):
-        print(self.well_info)
         html_str = "<h1>Selected Well</h1>"
         html_str += """
         <style>

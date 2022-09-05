@@ -5,7 +5,7 @@ import numpy as np
 import nd2
 import pandas as pd
 
-from plate_map_plots import plot_plate_map, WellInfoText
+from plate_map_plots import plot_plate_map, WellInfoTable
 
 from wellplate.elements import read_plate_xml
 import holoviews as hv
@@ -16,7 +16,7 @@ def get_app():
     pn.config.throttled = True
 
     ## Pane instances.
-    well_info_text = WellInfoText(name='')
+    well_info_table = WellInfoTable(name='')
 
     class ExperimentData(param.Parameterized):
         with open('app/data.json') as f:
@@ -31,9 +31,15 @@ def get_app():
         conditions = param.ObjectSelector(default='',objects=[''],label='Condition')
         meta_data=pd.DataFrame()
         def view(self):
+            print('here!')
             return plot_plate_map(plate_map,well_view)
 
     plate_map = PlateMap(name='')
+
+    def hook(plot, element):
+        fig = plot.state
+        fig['layout']['xaxis_visible']=False
+        fig['layout']['yaxis_visible']=False
 
     class WellView(param.Parameterized):
         xarr = None
@@ -49,13 +55,13 @@ def get_app():
             if len(new)>0:
                 self.selected_well = new[0]
                 # update well info.
-                well_info_text.well_info = plate_map.meta_data.iloc[self.selected_well].to_frame().transpose()
+                well_info_table.well_info = plate_map.meta_data.iloc[self.selected_well].to_frame().transpose()
         def create_result_rgb(self):
             result_im = np.zeros((self.im_size[0],self.im_size[1],3),np.float)
             for channel in self.channels:
                 if channel.result_rgb is not None:
                     result_im += channel.result_rgb
-            return hv.RGB(np.clip(result_im,0,1))
+            return hv.RGB(np.clip(result_im,0,1)).opts(hooks=[hook])
     well_view = WellView()
 
 
@@ -70,13 +76,15 @@ def get_app():
             self.result_rgb = None
             self.callback = None
         def set_data(self, array):
-            #nmormalize.
+            self.range.start = array.min()
+            self.range.end = array.max()
+            #normalize.
             norm_im = array/ (2**16)
             # apply colormap.
             self.im_rgb = self.colormap(norm_im)
             # bind controls.
-            self.callback = pn.bind(self.set_range, self.enable, self.range, watch=True)
-        def set_range(self, enable,range, redraw=True ):
+            self.callback = pn.bind(self.set_img_range, self.enable, self.range, watch=True)
+        def set_img_range(self, enable,range, redraw=True ):
             if enable:
                 if self.im_rgb is not None:
                     # scale threshold to 0-1.
@@ -90,20 +98,7 @@ def get_app():
             if redraw:
                 well_view.redraw()
 
-    @pn.depends(exp_data.param.current_exp_name)
-    def load_experiment_data(value):
-        data_index = exp_data.exp_names.index(exp_data.current_exp_name)
-        plate_map.meta_data, _, labels = read_plate_xml(exp_data.data_sets[data_index]['wellmap'])
-        # Get conditions.
-        conditions = [ cond for cond in plate_map.meta_data.columns[1:] if cond not in ['Note','Notes']]
-        plate_map.param.conditions.objects = conditions
-        # load imaging data.
-        well_view.xarr, names, colormaps = read_nd2(exp_data.data_sets[data_index]['nd2'])
-        well_view.im_size = [well_view.xarr.shape[2],well_view.xarr.shape[3]]
-        # create channels.
-        for channel, channel_name in enumerate(names):
-            well_view.channels.append(Channel(channel_name, colormaps[channel]))
-    load_experiment_data(exp_data.param.current_exp_name)
+
 
     params = well_view.param
 
@@ -114,20 +109,15 @@ def get_app():
         # attach to channels.
         for i, channel in enumerate(well_view.channels):
             channel.set_data(np.squeeze(well_data[i,:,:]))
-            channel.set_range(channel.enable.value, channel.range.value,redraw=False)
+            channel.set_img_range(channel.enable.value, channel.range.value,redraw=False)
         # trigger redraw
         well_view.redraw()
 
     # Redraw image.
     @pn.depends(params.redraw_flag)
     def image_callback(**kwargs):
-        return well_view.create_result_rgb().opts(aspect=1)
+        return well_view.create_result_rgb()
     img_dmap = hv.DynamicMap(image_callback)
-
-    def well_info_update(selected_well):
-        return hv.Table(pd.DataFrame([plate_map.meta_data.iloc[selected_well]])).opts(
-            height=250,width=500,padding=0.1)
-    well_info_table = pn.bind(well_info_update, well_view.param.selected_well)
 
     # Create app.
     app = pn.template.MaterialTemplate(title='Plate Map')
@@ -135,19 +125,38 @@ def get_app():
     # Header.
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     # Plate map.
-    app.main.append(pn.pane.HTML("<h1>Plate Map</h1>"))
-    app.main.append(pn.Column(
-        plate_map.param, pn.Row(plate_map.view,well_info_table)))
+    app.main.append(pn.Column(pn.pane.HTML("<h1>Plate Map</h1>"),plate_map.param,))
+    app.main.append(pn.Row(pn.layout.HSpacer(),plate_map.view,pn.layout.HSpacer()))
 
     # Image widgets.
-    app.main.append(pn.Column(well_info_text.param,well_info_text.view))
+    app.main.append(pn.Column(well_info_table.param,well_info_table.view))
     channel_widgets_column = pn.Column()
-    for channel in well_view.channels:
-        channel_widgets_column.append(
-            pn.Column(channel.enable,channel.range, background= f'{to_hex(channel.colormap(255)[:3])}60'))
-        channel_widgets_column.append(pn.Column(pn.Spacer(height=5)))
-    app.main.append(pn.Row(channel_widgets_column,
-        img_dmap.opts(width=700,height=700, xaxis=None, yaxis=None)))
+    app.main.append(pn.Row(pn.layout.HSpacer(),channel_widgets_column,
+        img_dmap.opts(width=600, height=600),pn.layout.HSpacer()))
+
+    @pn.depends(exp_data.param.current_exp_name, watch=True)
+    def load_experiment_data(value):
+        data_index = exp_data.exp_names.index(exp_data.current_exp_name)
+        meta_data, _, labels = read_plate_xml(exp_data.data_sets[data_index]['wellmap'])
+        plate_map.meta_data = meta_data
+        # Get conditions.
+        conditions = [ cond for cond in plate_map.meta_data.columns[1:] if cond not in ['Note','Notes']]
+        plate_map.param.conditions.objects = conditions
+        plate_map.conditions = conditions[0]
+        # load imaging data.
+        well_view.xarr, names, colormaps = read_nd2(exp_data.data_sets[data_index]['nd2'])
+        well_view.im_size = [well_view.xarr.shape[2],well_view.xarr.shape[3]]
+        # create channels.
+        well_view.channels.clear()
+        for channel, channel_name in enumerate(names):
+            well_view.channels.append(Channel(channel_name, colormaps[channel]))
+        # Create controls.
+        channel_widgets_column.clear()
+        for channel in well_view.channels:
+            channel_widgets_column.append(
+                pn.Column(channel.enable,channel.range, background= f'{to_hex(channel.colormap(255)[:3])}60'))
+            channel_widgets_column.append(pn.Column(pn.Spacer(height=5)))
+    load_experiment_data(exp_data.param.current_exp_name)
     return app
 
 def read_nd2(file_loc):
