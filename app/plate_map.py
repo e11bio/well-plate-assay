@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from plate_map_plots import plot_plate_map, WellInfoTable, WellView, Channel
+from plate_map_plots import  PlateMap, WellInfoTable, WellView, Channel
 
 from wellplate.elements import read_plate_xml, read_nd2
 import holoviews as hv
@@ -23,44 +23,16 @@ def get_app():
 
     exp_data = ExperimentData()
 
-    class PlateMap(param.Parameterized):
-        conditions = param.ObjectSelector(default='',objects=[''],label='Condition')
-        meta_data=pd.DataFrame()
-        exp_data=None
-        def view(self):
-            return plot_plate_map(plate_map,well_view)
-        def load_experiment_data(self,current_exp_name):
-            print(current_exp_name)
-            data_index = self.exp_data.exp_names.index(current_exp_name)
-            meta_data, _, labels = read_plate_xml(self.exp_data.data_sets[data_index]['wellmap'])
-            plate_map.meta_data = meta_data
-            # Get conditions.
-            conditions = [ cond for cond in plate_map.meta_data.columns[1:] if cond not in ['Note','Notes']]
-            plate_map.param.conditions.objects = conditions
-            plate_map.conditions = conditions[0]
-
-    
-
     # instantiate
     plate_map = PlateMap(name='')
     plate_map.exp_data = exp_data
     plate_map.bound = pn.bind(plate_map.load_experiment_data, exp_data.param.current_exp_name)
     well_view = WellView()
+    well_view.bound = pn.bind(well_view.get_well_data, plate_map.param.selected_well)
     well_info_table = WellInfoTable(name='')
     well_info_table.plate_map = plate_map
     # add callback for well selection.
-    well_info_table.bound = pn.bind(well_info_table.selection_change, well_view.param.selected_well)
-
-    @pn.depends(selected_well = well_view.param.selected_well, watch=True)
-    def get_well_data(selected_well):
-        # Grab data from xarr.
-        well_data = np.squeeze(well_view.xarr[well_view.selected_well,:,:,:]).to_numpy().astype('float')
-        # attach to channels.
-        for i, channel in enumerate(well_view.channels):
-            channel.set_data(np.squeeze(well_data[i,:,:]))
-            channel.set_img_range(channel.enable.value, channel.range.value,redraw=False)
-        # trigger redraw
-        well_view.redraw()
+    well_info_table.bound = pn.bind(well_info_table.selection_change, plate_map.param.selected_well)
 
     # Redraw image.
     @pn.depends(well_view.param.redraw_flag)
@@ -78,7 +50,7 @@ def get_app():
     app.main.append(pn.Row(pn.layout.HSpacer(),plate_map.view,pn.layout.HSpacer()))
 
     # Image widgets.
-    app.main.append(pn.Column(well_info_table.bound,well_info_table.param,well_info_table.view))
+    app.main.append(pn.Column(well_info_table.bound,well_view.bound,well_info_table.param,well_info_table.view))
     channel_widgets_column = pn.Column()
     app.main.append(pn.Row(pn.layout.HSpacer(),channel_widgets_column,
         img_dmap.opts(width=700, height=700),pn.layout.HSpacer()))
