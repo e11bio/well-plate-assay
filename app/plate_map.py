@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from plate_map_plots import  PlateMap, WellInfoTable, WellView, ExperimentData
+from plate_map_plots import  PlateMap, WellInfoTable, WellView, ExperimentData, SelectedWell
 
 from wellplate.elements import read_plate_xml, read_nd2
 import holoviews as hv
@@ -17,19 +17,21 @@ def get_app():
 
     # instantiate
     exp_data = ExperimentData()
+    selected_well = SelectedWell()
     # plate map.
     plate_map = PlateMap(name='')
+    plate_map.selected_well = selected_well
     plate_map.bound = pn.bind(plate_map.load_experiment_data, exp_data.param.current_exp_name,
         exp_data.exp_names,exp_data.data_sets)
     # well view.
     well_view = WellView()
-    well_view.bound = pn.bind(well_view.get_well_data, plate_map.param.selected_well)
+    well_view.bound = pn.bind(well_view.get_well_data, selected_well.param.ind)
     well_view.bound_exp = pn.bind(well_view.load_experiment_data, exp_data.param.current_exp_name,
         exp_data.exp_names,exp_data.data_sets)
     # info table.
     well_info_table = WellInfoTable(name='')
     well_info_table.bound = pn.bind(well_info_table.selection_change,
-        plate_map.param.selected_well, plate_map.param.meta_data)
+        selected_well.param.ind, plate_map.param.meta_data)
 
     # Main image viewer.
     @pn.depends(well_view.param.redraw_flag)
