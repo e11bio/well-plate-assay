@@ -50,7 +50,7 @@ def get_app():
     # Header.
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     # Plate map.
-    app.main.append(pn.Column(plate_map.bound,plate_map.param,))
+    app.main.append(pn.Column(plate_map.bound,plate_map.param.conditions,))
     app.main.append(pn.Row(pn.layout.HSpacer(),plate_map.view,pn.layout.HSpacer()))
 
     # Image widgets.

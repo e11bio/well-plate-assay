@@ -10,45 +10,49 @@ import pandas as pd
 import holoviews as hv
 from wellplate.elements import read_plate_xml, read_nd2
 from matplotlib.colors import  to_hex
-
 class PlateMap(param.Parameterized):
         conditions = param.ObjectSelector(default='',objects=[''],label='Condition')
-        meta_data=pd.DataFrame()
-        selected_well = param.Number(0,label='Enable Brightfield Channel',precedence=-1)
+        meta_data = param.DataFrame(pd.DataFrame())
+        selected_well = param.Number(0,precedence=-1)
+        selected_flag = False # tracks if redraw is necessary.
         exp_data=None
         well_size = 96
+        p = None
         def view(self):
-            print('here')
-            p = figure(width=800, height=400,tools="tap")
-            p.grid.visible = False
-            p.toolbar.active_drag = None
-            p.toolbar.active_scroll = None
-            if self.well_size == 96:
-                x = np.tile(np.arange(1,13),8)
-                y = (np.array([np.repeat(i,12)for i in range(8)])).flatten()
-                #adjust axis.
-                p.x_range.start, p.x_range.end = 0.5,14.5
-                p.y_range.start, p.y_range.end = 7.5,-0.5
-                p.yaxis.ticker = np.arange(0,9)
-                p.yaxis.major_label_overrides = {0: 'A', 1: 'B', 2: 'C',3:'D',4:'E',5:'F',6:'G',7:'H'}
-                p.xaxis.ticker = np.arange(1,13)
+            if self.selected_flag==False:
+                p = figure(width=800, height=400,tools="tap")
+                p.grid.visible = False
+                p.toolbar.active_drag = None
+                p.toolbar.active_scroll = None
+                if self.well_size == 96:
+                    x = np.tile(np.arange(1,13),8)
+                    y = (np.array([np.repeat(i,12)for i in range(8)])).flatten()
+                    #adjust axis.
+                    p.x_range.start, p.x_range.end = 0.5,14.5
+                    p.y_range.start, p.y_range.end = 7.5,-0.5
+                    p.yaxis.ticker = np.arange(0,9)
+                    p.yaxis.major_label_overrides = {0: 'A', 1: 'B', 2: 'C',3:'D',4:'E',5:'F',6:'G',7:'H'}
+                    p.xaxis.ticker = np.arange(1,13)
 
-            if self.conditions != '':
-                values = self.meta_data[self.conditions].unique()
-                source = ColumnDataSource(dict(x=x,y=y,condition = self.meta_data[self.conditions]))
-                p.circle('x','y', source=source, radius=0.3, alpha=0.5,
-                        fill_color=factor_cmap('condition', 'Category10_3', values),legend_field='condition')
-                p.legend.orientation = "vertical"
-                p.legend.location = "top_right"
-                # click interactions
-                p.select(type=TapTool)
-                source.selected.on_change('indices', self.change_selected_well)
-            return p
+                if self.conditions != '':
+                    values = self.meta_data[self.conditions].unique()
+                    source = ColumnDataSource(dict(x=x,y=y,condition = self.meta_data[self.conditions]))
+                    p.circle('x','y', source=source, radius=0.3, alpha=0.5,
+                            fill_color=factor_cmap('condition', 'Category10_3', values),legend_field='condition')
+                    p.legend.orientation = "vertical"
+                    p.legend.location = "top_right"
+                    # click interactions
+                    p.select(type=TapTool)
+                    source.selected.on_change('indices', self.change_selected_well)
+                    self.p = p
+            return self.p
         def change_selected_well(self, attr, old, new):
             if len(new)>0:
+                self.selected_flag = True
                 self.selected_well = new[0]
 
         def load_experiment_data(self,current_exp_name):
+            self.selected_flag = False
             data_index = self.exp_data.exp_names.index(current_exp_name)
             self.meta_data, _, labels = read_plate_xml(self.exp_data.data_sets[data_index]['wellmap'])
             # Get conditions.
