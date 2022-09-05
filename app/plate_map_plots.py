@@ -8,14 +8,22 @@ from bokeh.models import TapTool
 import panel as pn
 import pandas as pd
 import holoviews as hv
+import json
 from wellplate.elements import read_plate_xml, read_nd2
 from matplotlib.colors import  to_hex
+import time
+class ExperimentData(param.Parameterized):
+        with open('app/data.json') as f:
+            data_info = json.load(f)
+        data_sets = data_info['data_sets']
+        exp_names = [loc['name'] for loc in data_sets]
+        current_exp_name = param.ObjectSelector(default=exp_names[0],objects=exp_names,label='Experiment Data')
+
 class PlateMap(param.Parameterized):
         conditions = param.ObjectSelector(default='',objects=[''],label='Condition')
         meta_data = param.DataFrame(pd.DataFrame())
         selected_well = param.Number(0,precedence=-1)
         selected_flag = False # tracks if redraw is necessary.
-        exp_data=None
         well_size = 96
         p = None
         def view(self):
@@ -51,10 +59,10 @@ class PlateMap(param.Parameterized):
                 self.selected_flag = True
                 self.selected_well = new[0]
 
-        def load_experiment_data(self,current_exp_name):
+        def load_experiment_data(self,current_exp_name, exp_names, data_sets):
             self.selected_flag = False
-            data_index = self.exp_data.exp_names.index(current_exp_name)
-            self.meta_data, _, labels = read_plate_xml(self.exp_data.data_sets[data_index]['wellmap'])
+            data_index = exp_names.index(current_exp_name)
+            self.meta_data, _, labels = read_plate_xml(data_sets[data_index]['wellmap'])
             # Get conditions.
             conditions = [ cond for cond in self.meta_data.columns[1:] if cond not in ['Note','Notes']]
             self.param.conditions.objects = conditions
@@ -99,10 +107,8 @@ class WellView(param.Parameterized):
     im_size = [10,10]
     well_change_callback = []
     channels = []
-    exp_data = None
     channel_widgets = pn.Column()
     # 
-    rgb_result_im = None
     redraw_flag = param.Boolean(False,label='Enable Brightfield Channel', precedence=-1)
     def redraw(self):
         self.redraw_flag = not self.redraw_flag
@@ -111,7 +117,9 @@ class WellView(param.Parameterized):
         for channel in self.channels:
             if channel.result_rgb is not None:
                 result_im += channel.result_rgb
-        return hv.RGB(np.clip(result_im,0,1)).opts(hooks=[self.hook])
+        im = np.clip(result_im,0,1)
+        im = hv.RGB(im).opts(hooks=[self.hook])
+        return im
     def hook(self, plot, element):
         fig = plot.state
         fig['layout']['xaxis_visible']=False
@@ -126,10 +134,10 @@ class WellView(param.Parameterized):
                 channel.set_img_range(channel.enable.value, channel.range.value,redraw=False)
             # trigger redraw
             self.redraw()
-    def load_experiment_data(self,current_exp_name):
-        data_index = self.exp_data.exp_names.index(current_exp_name)
+    def load_experiment_data(self,current_exp_name, exp_names, data_sets):
+        data_index = exp_names.index(current_exp_name)
         # load imaging data.
-        self.xarr, names, colormaps = read_nd2(self.exp_data.data_sets[data_index]['nd2'])
+        self.xarr, names, colormaps = read_nd2(data_sets[data_index]['nd2'])
         self.im_size = [self.xarr.shape[2],self.xarr.shape[3]]
         # create channels.
         self.channels.clear()
@@ -180,9 +188,9 @@ class WellInfoTable(param.Parameterized):
         html_str +="</tr></table><p>"
         html = pn.pane.HTML(html_str)
         return html
-    def selection_change(self,selected_well):
-        if self.plate_map.meta_data.size>0:
-            self.well_info = self.plate_map.meta_data.iloc[selected_well].to_frame().transpose()
+    def selection_change(self,selected_well, meta_data):
+        if meta_data.size>0:
+            self.well_info = meta_data.iloc[selected_well].to_frame().transpose()
 
 
     

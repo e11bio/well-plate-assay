@@ -9,6 +9,7 @@ dependencies:
   - conda-forge::ipyfilechooser
   - xarray
   - conda-forge::zarr
+  - conda-forge::datashader
   - panel
   - pyviz::panel
   - pyyaml
