@@ -126,6 +126,44 @@ def get_app():
             height=250,width=500,padding=0.1)
     well_info_table = pn.bind(well_info_update, well_view.param.selected_well)
 
+    class WellInfoText(param.Parameterized):
+        well_info = param.DataFrame(pd.DataFrame([{'Well':'a', 'Condition':'b'}]),precedence=-1)
+        def view(self):
+            html_str = "<h3>Experimental conditions</h3>"
+            html_str += """
+            <style>
+            table {
+            font-family: arial, sans-serif;
+            border-collapse: collapse;
+            width: 100%;
+            }
+
+            td, th {
+            border: 1px solid #dddddd;
+            text-align: left;
+            padding: 8px;
+            }
+
+            tr:nth-child(even) {
+            background-color: #dddddd;
+            }
+            </style>
+            </head>
+            """
+            html_str += "<table><tr>"
+            # column  header
+            for (column_name, column_data) in self.well_info.iteritems():
+                html_str += f"<th>{column_name}</th>"
+            html_str += "</tr><tr>"
+            # column data.
+            for (column_name, column_data) in self.well_info.iteritems():
+                html_str += f"<td>{column_data.values[0]}</td>"           
+            html_str +="</tr></table>"
+            html = pn.pane.HTML(html_str)
+            return html
+    well_info_text = WellInfoText()
+
+
     # Create app.
     app = pn.template.MaterialTemplate(title='Plate Map')
     # Main Layout
@@ -138,6 +176,7 @@ def get_app():
 
     # Image widgets.
     app.main.append(pn.pane.Markdown('#Well Viewer'))
+    app.main.append(well_info_text.view())
     channel_widgets_column = pn.Column()
     for channel in well_view.channels:
         channel_widgets_column.append(
