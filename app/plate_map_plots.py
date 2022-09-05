@@ -1,18 +1,12 @@
 import numpy as np
+import param
 from bokeh.models import ColumnDataSource
 from bokeh.plotting import figure
 from bokeh.palettes import Spectral6
 from bokeh.transform import factor_cmap, linear_cmap
-from bokeh.models import ColorBar, TapTool
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+from bokeh.models import TapTool
 import panel as pn
-from random import randrange
-import plotly.express as px
-import plotly.graph_objects as go
-import time
-import holoviews as hv
-from holoviews.streams import Pipe, Buffer
+import pandas as pd
 
 # plots.
 def plot_plate_map(plate_map, well_view, well_size = 96):
@@ -44,3 +38,39 @@ def plot_plate_map(plate_map, well_view, well_size = 96):
         source.selected.on_change('indices', well_view.change_selected_well)
     return p
 
+class WellInfoText(param.Parameterized):
+    well_info = param.DataFrame(pd.DataFrame([{'Well':'', 'Condition':''}]),precedence=-1)
+    def view(self):
+        print(self.well_info)
+        html_str = "<h1>Selected Well</h1>"
+        html_str += """
+        <style>
+        table {
+        font-family: arial, sans-serif;
+        border-collapse: collapse;
+        width: 100%;
+        }
+
+        td, th {
+        border: 1px solid #dddddd;
+        text-align: left;
+        padding: 8px;
+        }
+
+        th {
+        background-color: #dddddd;
+        }
+        </style>
+        </head>
+        """
+        html_str += "<table><tr>"
+        # column  header
+        for (column_name, column_data) in self.well_info.iteritems():
+            html_str += f"<th>{column_name[0].upper() + column_name[1:]}</th>"
+        html_str += "</tr><tr>"
+        # column data.
+        for (column_name, column_data) in self.well_info.iteritems():
+            html_str += f"<td>{column_data.values[0]}</td>"           
+        html_str +="</tr></table><p>"
+        html = pn.pane.HTML(html_str)
+        return html

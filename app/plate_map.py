@@ -3,19 +3,20 @@ import param
 import json
 import numpy as np
 import nd2
-import time
 import pandas as pd
 
-from plate_map_plots import plot_plate_map
+from plate_map_plots import plot_plate_map, WellInfoText
 
 from wellplate.elements import read_plate_xml
 import holoviews as hv
 from matplotlib.colors import LinearSegmentedColormap, to_hex
-import panel.widgets as pnw
 
 def get_app():
     hv.extension('plotly')
     pn.config.throttled = True
+
+    ## Pane instances.
+    well_info_text = WellInfoText(name='')
 
     class ExperimentData(param.Parameterized):
         with open('app/data.json') as f:
@@ -32,7 +33,7 @@ def get_app():
         def view(self):
             return plot_plate_map(plate_map,well_view)
 
-    plate_map = PlateMap()
+    plate_map = PlateMap(name='')
 
     class WellView(param.Parameterized):
         xarr = None
@@ -47,6 +48,8 @@ def get_app():
         def change_selected_well(self, attr, old, new):
             if len(new)>0:
                 self.selected_well = new[0]
+                # update well info.
+                well_info_text.well_info = plate_map.meta_data.iloc[self.selected_well].to_frame().transpose()
         def create_result_rgb(self):
             result_im = np.zeros((self.im_size[0],self.im_size[1],3),np.float)
             for channel in self.channels:
@@ -126,57 +129,18 @@ def get_app():
             height=250,width=500,padding=0.1)
     well_info_table = pn.bind(well_info_update, well_view.param.selected_well)
 
-    class WellInfoText(param.Parameterized):
-        well_info = param.DataFrame(pd.DataFrame([{'Well':'a', 'Condition':'b'}]),precedence=-1)
-        def view(self):
-            html_str = "<h3>Experimental conditions</h3>"
-            html_str += """
-            <style>
-            table {
-            font-family: arial, sans-serif;
-            border-collapse: collapse;
-            width: 100%;
-            }
-
-            td, th {
-            border: 1px solid #dddddd;
-            text-align: left;
-            padding: 8px;
-            }
-
-            tr:nth-child(even) {
-            background-color: #dddddd;
-            }
-            </style>
-            </head>
-            """
-            html_str += "<table><tr>"
-            # column  header
-            for (column_name, column_data) in self.well_info.iteritems():
-                html_str += f"<th>{column_name}</th>"
-            html_str += "</tr><tr>"
-            # column data.
-            for (column_name, column_data) in self.well_info.iteritems():
-                html_str += f"<td>{column_data.values[0]}</td>"           
-            html_str +="</tr></table>"
-            html = pn.pane.HTML(html_str)
-            return html
-    well_info_text = WellInfoText()
-
-
     # Create app.
     app = pn.template.MaterialTemplate(title='Plate Map')
     # Main Layout
     # Header.
     app.header.append(pn.Row(exp_data.param.current_exp_name , pn.layout.HSpacer()))
     # Plate map.
-    app.main.append(pn.pane.Markdown('#Plate Map\n View experimental conditions and select wells'))
+    app.main.append(pn.pane.HTML("<h1>Plate Map</h1>"))
     app.main.append(pn.Column(
         plate_map.param, pn.Row(plate_map.view,well_info_table)))
 
     # Image widgets.
-    app.main.append(pn.pane.Markdown('#Well Viewer'))
-    app.main.append(well_info_text.view())
+    app.main.append(pn.Column(well_info_text.param,well_info_text.view))
     channel_widgets_column = pn.Column()
     for channel in well_view.channels:
         channel_widgets_column.append(
