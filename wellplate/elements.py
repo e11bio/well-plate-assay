@@ -66,7 +66,7 @@ def read_nd2(file_loc):
             a = 1
             colors = [[0,0,0],[r,g,b]]
             # process colormaps. 
-            colormaps.append(LinearSegmentedColormap.from_list('testCmap', colors, N=256))
+            colormaps.append(LinearSegmentedColormap.from_list('testCmap', colors, N=2**16))
             names.append(name)
         xarr = f.to_xarray(delayed=True)
     return xarr, names, colormaps

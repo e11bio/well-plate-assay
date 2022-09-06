@@ -10,7 +10,8 @@ import pandas as pd
 import holoviews as hv
 import json
 from wellplate.elements import read_plate_xml, read_nd2
-from matplotlib.colors import  to_hex
+from matplotlib.colors import  to_hex,LinearSegmentedColormap
+import zarr
 import time
 
 class ExperimentData(param.Parameterized):
@@ -101,8 +102,22 @@ class Channel():
         if redraw:
             self.well_view.redraw()
 
+class MaskChannel(Channel):
+    def set_data(self, array):
+        self.im_rgb = self.colormap(array>0)
+        self.callback = pn.bind(self.set_img_range, self.enable,0, watch=True)
+    def set_img_range(self, enable, range, redraw=True):
+        if enable:
+            if self.im_rgb is not None:
+                self.result_rgb = self.im_rgb[:,:,:3]
+        else:
+            self.result_rgb = None
+        if redraw:
+            self.well_view.redraw()
+
 class WellView(param.Parameterized):
     xarr = None
+    cell_masks = None
     im_size = [10,10]
     well_change_callback = []
     channels = []
@@ -127,10 +142,15 @@ class WellView(param.Parameterized):
         if self.xarr is not None:
             # Grab data from xarr.
             well_data = np.squeeze(self.xarr[selected_well,:,:,:]).to_numpy().astype('float')
+            mask_data = np.squeeze(self.cell_masks[selected_well,:,:]).astype('float')
             # attach to channels.
             for i, channel in enumerate(self.channels):
-                channel.set_data(np.squeeze(well_data[i,:,:]))
-                channel.set_img_range(channel.enable.value, channel.range.value,redraw=False)
+                if i!=len(self.channels)-1:         
+                    channel.set_data(np.squeeze(well_data[i,:,:]))
+                    channel.set_img_range(channel.enable.value, channel.range.value,redraw=False)
+                else:
+                    channel.set_data(np.squeeze(mask_data))
+                    channel.set_img_range(channel.enable.value, channel.range.value,redraw=False)
             # trigger redraw
             self.redraw()
     def load_experiment_data(self,current_exp_name, exp_names, data_sets):
@@ -138,6 +158,8 @@ class WellView(param.Parameterized):
         # load imaging data.
         self.xarr, names, colormaps = read_nd2(data_sets[data_index]['nd2'])
         self.im_size = [self.xarr.shape[2],self.xarr.shape[3]]
+        # load cell masks.
+        self.cell_masks = zarr.open(data_sets[data_index]['processed'])['cells/cell_masks'].astype('float')
         # create channels.
         self.channels.clear()
         for channel, channel_name in enumerate(names):
@@ -146,8 +168,15 @@ class WellView(param.Parameterized):
         self.channel_widgets.clear()
         for channel in self.channels:
             self.channel_widgets.append(
-                pn.Column(channel.enable,channel.range, background= f'{to_hex(channel.colormap(255)[:3])}60'))
+                pn.Column(channel.enable,channel.range, background= f'{to_hex(channel.colormap(2**16)[:3])}60'))
             self.channel_widgets.append(pn.Column(pn.Spacer(height=5)))
+        # create cell mask channel.
+        self.channels.append(MaskChannel('Cell Masks', 
+            LinearSegmentedColormap.from_list('testCmap', [[0,0,0],[1,1,1]], N=2), self))
+        mask_channel = self.channels[-1]
+        self.channel_widgets.append(
+                pn.Column(mask_channel.enable, background= f'#88888888'))
+        self.channel_widgets.append(pn.Column(pn.Spacer(height=5)))
 
 
 class WellInfoTable(param.Parameterized):
