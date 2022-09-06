@@ -144,6 +144,8 @@ class WellView(param.Parameterized):
         fig = plot.state
         fig['layout']['xaxis_visible']=False
         fig['layout']['yaxis_visible']=False
+        fig['layout']['xaxis_scaleanchor']="y"
+        fig['layout']['xaxis_scaleratio']=1
     def get_well_data(self,selected_well):
         if self.xarr is not None:
             # Grab data from xarr.
