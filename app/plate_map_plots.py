@@ -107,7 +107,7 @@ class MaskChannel(Channel):
     def set_data(self, array):
         vals = np.linspace(0,1,10000)
         np.random.shuffle(vals)
-        cmap = plt.cm.jet(vals)
+        cmap = plt.cm.gist_rainbow(vals)
         cmap[0,:] = [0,0,0,0]
         cmap = plt.cm.colors.ListedColormap(cmap)
         self.im_rgb = cmap(array/10000).astype('float')
