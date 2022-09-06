@@ -11,6 +11,7 @@ import holoviews as hv
 import json
 from wellplate.elements import read_plate_xml, read_nd2
 from matplotlib.colors import  to_hex,LinearSegmentedColormap
+import matplotlib.pyplot as plt
 import zarr
 import time
 
@@ -22,7 +23,7 @@ class ExperimentData(param.Parameterized):
         current_exp_name = param.ObjectSelector(default=exp_names[0],objects=exp_names,label='Experiment Data')
 
 class SelectedWell(param.Parameterized):
-    ind = param.Number(0,precedence=-1)
+    ind = param.Number(-1,precedence=-1)
 
 class PlateMap(param.Parameterized):
         conditions = param.ObjectSelector(default='',objects=[''],label='Condition')
@@ -69,8 +70,8 @@ class PlateMap(param.Parameterized):
             self.conditions = conditions[0]
 
 class Channel():
-    def __init__(self,name,colormap, well_view):
-        self.enable = pn.widgets.Checkbox(name=f'Enable {name}', value=True)
+    def __init__(self,name,colormap, enable, well_view):
+        self.enable = pn.widgets.Checkbox(name=f'Enable {name}', value=enable)
         self.range = pn.widgets.RangeSlider(name='Display Range', start = 0, end= 2**16,
                             value=(0,20000))
         self.name = name
@@ -104,7 +105,12 @@ class Channel():
 
 class MaskChannel(Channel):
     def set_data(self, array):
-        self.im_rgb = self.colormap(array>0)
+        vals = np.linspace(0,1,10000)
+        np.random.shuffle(vals)
+        cmap = plt.cm.jet(vals)
+        cmap[0,:] = [0,0,0,0]
+        cmap = plt.cm.colors.ListedColormap(cmap)
+        self.im_rgb = cmap(array/10000).astype('float')
         self.callback = pn.bind(self.set_img_range, self.enable,0, watch=True)
     def set_img_range(self, enable, range, redraw=True):
         if enable:
@@ -163,7 +169,10 @@ class WellView(param.Parameterized):
         # create channels.
         self.channels.clear()
         for channel, channel_name in enumerate(names):
-            self.channels.append(Channel(channel_name, colormaps[channel], self))
+            default_enable =True
+            if (channel_name == 'Bright Field'):
+                default_enable = False
+            self.channels.append(Channel(channel_name, colormaps[channel], default_enable,self))
         # Create controls.
         self.channel_widgets.clear()
         for channel in self.channels:
@@ -171,11 +180,9 @@ class WellView(param.Parameterized):
                 pn.Column(channel.enable,channel.range, background= f'{to_hex(channel.colormap(2**16)[:3])}60'))
             self.channel_widgets.append(pn.Column(pn.Spacer(height=5)))
         # create cell mask channel.
-        self.channels.append(MaskChannel('Cell Masks', 
-            LinearSegmentedColormap.from_list('testCmap', [[0,0,0],[1,1,1]], N=2), self))
+        self.channels.append(MaskChannel('Cell Masks', None, False, self))
         mask_channel = self.channels[-1]
-        self.channel_widgets.append(
-                pn.Column(mask_channel.enable, background= f'#88888888'))
+        self.channel_widgets.append( pn.Column(mask_channel.enable, background= f'#88888888'))
         self.channel_widgets.append(pn.Column(pn.Spacer(height=5)))
 
 
