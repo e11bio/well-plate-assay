@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import nd2
 from matplotlib.colors import LinearSegmentedColormap
+import csv
+
 
 def read_plate_xml(file_loc):
     # get tree
@@ -15,6 +17,31 @@ def read_plate_xml(file_loc):
     # read all meta data.
     meta_data,meta_data_info = read_meta_data(root,preset_index)
     return meta_data, meta_data_info, labels
+
+def read_plate_csv(file_loc):
+    with open(file_loc, 'r') as file:
+        # find labels
+        meta_data= pd.DataFrame()
+        meta_data['well'] = [well_ind_to_id(i) for i in range(96)]
+        values=[]
+        read_values = False
+        read_lines = 0
+        reader = csv.reader(file)
+        for i, row in enumerate(reader):
+            if read_values:
+                values.append(row[start_ind:start_ind+12])
+                read_lines+=1
+                if read_lines==8:
+                    meta_data[name] = np.array(values).flatten()
+                    read_lines=0
+                    read_values=False
+            if ('Selection' in row) & (read_values==False):
+                start_ind = row.index('Selection')
+                name = row[start_ind+1]
+                # get values.
+                values=[]
+                read_values=True # start reading values on next line
+    return meta_data
 
 def read_labels(root, preset_index):
     labels = []
@@ -41,10 +68,13 @@ def read_meta_data(root, preset_index):
         meta_desc = elem.find('Desc').text
         meta_data_info.append({'name':meta_name,'desc':meta_desc})
         # get value each well.
-        meta_wells = np.empty(96,object)
+        meta_wells = ['None' for i in range(96)]
         for well in elem.findall('Wells/Well'):
             well_index = int(well.find('WellIndex').text)
-            meta_wells[well_index] = well.find('Quality').text
+            quality = well.find('Quality')
+            if quality is not None:
+                meta_wells[well_index] = quality.text
+        
         meta_data[meta_name] = meta_wells
     return meta_data, meta_data_info
 
