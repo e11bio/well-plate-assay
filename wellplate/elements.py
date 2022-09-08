@@ -43,6 +43,23 @@ def read_plate_csv(file_loc):
                 read_values=True # start reading values on next line
     return meta_data
 
+def read_plate_gsheet(file_name, tab_name, label_word='SELECTION'):
+    meta_data = pd.DataFrame([])
+    # get well IDs.
+    meta_data['well'] = [ well_ind_to_id(i) for i in range(96)]
+    # get data.
+    data = np.array(gc.open(file_name).worksheet(tab_name).get_all_values())
+    # get labels
+    label_indices = np.argwhere(data==label_word)
+    # get values.
+    for label_ind in label_indices:
+        name = data[label_ind[0], label_ind[1]+1]
+        values = data[label_ind[0]+1: label_ind[0]+9, label_ind[1]:label_ind[1]+12]
+        values[values=='']='none'
+        #store.
+        meta_data[name] = values.flatten()
+    return meta_data
+
 def read_labels(root, preset_index):
     labels = []
     for elem in root.findall(f"./WellplateMetadata_{preset_index}/Labels/"):
