@@ -43,7 +43,7 @@ def read_plate_csv(file_loc):
                 read_values=True # start reading values on next line
     return meta_data
 
-def read_plate_gsheet(file_name, tab_name, label_word='SELECTION'):
+def read_plate_gsheet(gc, file_name, tab_name, label_word='SELECTION'):
     meta_data = pd.DataFrame([])
     # get well IDs.
     meta_data['well'] = [ well_ind_to_id(i) for i in range(96)]
