@@ -10,6 +10,8 @@ import nd2
 import napari
 from napari.utils import Colormap
 from bokeh.models import TapTool
+import zarr
+from wellplate.extract import nd2_file_2_zarr_result_file
 
 def plate_map(meta_data, viewer=None):
     pn.extension()
@@ -82,3 +84,37 @@ def napari_plate_view(nd2_loc):
             colormaps.append(Colormap(colors,name = name))
         xarr = ndfile.to_xarray(delayed=False)
         return napari.view_image(xarr, channel_axis=1,colormap = colormaps,name=names)
+
+def show_sig_cell_masks(nd2_file, well_ind, dapi_channel, scaffold_channel, threshold_factor = 0.5 ):
+  # get result zarr file. 
+  result_file = nd2_file_2_zarr_result_file(nd2_file)
+  proc_data = zarr.open(result_file)
+  # read nd2 file.
+  im_data, channel_names, colormaps = read_nd2(nd2_file)
+  channel_ind = channel_names.index(scaffold_channel)
+  # get image.
+  im=im_data[well_ind,channel_ind,:,:].to_numpy()
+  # get intensities.
+  intensities = proc_data[f'cells/intensities/well {well_ind}/channel {scaffold_channel}'][:]
+  # get background values.
+  background_values = proc_data[f'cells/background/well {well_ind}/channel {scaffold_channel}'][:]
+  mean_background = background_values[0]
+  std_background = background_values[1]
+  # THRESHOLD.
+  threshold = mean_background+(threshold_factor*std_background)
+  sig_cells = np.argwhere(intensities>threshold)+1
+  ns_cells = np.argwhere(intensities<=threshold)+1
+  # get mask.
+  mask_im = proc_data[f'cells/masks/well {well_ind}/channel {dapi_channel}'][:]
+  # get significant mask image.
+  sig_mask = np.isin(mask_im,sig_cells)
+  sig_mask = np.ma.masked_equal(sig_mask, False)
+  ns_mask = np.isin(mask_im,ns_cells)
+  ns_mask = np.ma.masked_equal(ns_mask, False)
+  cm_sig = mpl.colors.ListedColormap(['black','green'])
+  cm_ns = mpl.colors.ListedColormap(['black','red'])
+  # make figure.
+  fig, ax = plt.subplots(1,1,figsize=(12,12))
+  ax.imshow(im,vmin=intensities.min(),vmax=np.percentile(intensities,80),cmap='gray')
+  ax.imshow(sig_mask, cmap=cm_sig, vmin=0, vmax=1, interpolation='none', alpha=0.25)
+  ax.imshow(ns_mask, cmap=cm_ns, vmin=0, vmax=1, interpolation='none', alpha=0.25)
