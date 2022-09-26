@@ -17,3 +17,4 @@ dependencies:
   - pip: 
     - napari[all]
     - nd2
+    - cellpose[gui]

@@ -14,7 +14,6 @@ from holoviews.operation.datashader import regrid
 def get_app():
     hv.extension('plotly')
     pn.config.throttled = True
-
     # instantiate
     exp_data = ExperimentData()
     selected_well = SelectedWell()
