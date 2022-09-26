@@ -12,6 +12,9 @@ from napari.utils import Colormap
 from bokeh.models import TapTool
 import zarr
 from wellplate.extract import nd2_file_2_zarr_result_file
+from wellplate.elements import read_nd2
+import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 def plate_map(meta_data, viewer=None):
     pn.extension()
